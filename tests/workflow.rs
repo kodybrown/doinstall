@@ -193,6 +193,9 @@ fn zip_payload_preserves_permissions_and_refuses_traversal() {
   let mut package: Value = serde_saphyr::from_str(&fs::read_to_string(&f.config).unwrap()).unwrap();
   package["payload"] = "payload.zip".into();
   fs::write(&f.config, serde_saphyr::to_string(&package).unwrap()).unwrap();
+  let output = f._temp.path().join("zip-delivery");
+  f.good(&["package", "--output", output.to_str().unwrap()]);
+  assert_eq!(fs::read(output.join("payload.zip")).unwrap(), fs::read(&archive).unwrap());
   f.good(&[]);
   assert!(f.uninstall(&[]).status.success());
   let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
@@ -200,7 +203,21 @@ fn zip_payload_preserves_permissions_and_refuses_traversal() {
   zip.write_all(b"bad").unwrap();
   zip.finish().unwrap();
   assert!(!f.run(&[]).status.success());
+  let invalid_output = f._temp.path().join("invalid-zip-delivery");
+  assert!(!f
+    .run(&["package", "--output", invalid_output.to_str().unwrap()])
+    .status
+    .success());
+  assert!(!invalid_output.exists());
   assert!(!f._temp.path().join("escape").exists());
+  // Mutating the source archive never changes the completed independent package.
+  let artifact = output.join(if cfg!(windows) {
+    "installer.exe"
+  } else {
+    "installer"
+  });
+  let result = Command::new(artifact).arg("--validate").output().unwrap();
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
 }
 #[test]
 fn local_and_external_shortcuts_are_independent() {
@@ -677,4 +694,111 @@ fn runtime_fields_at_root_are_rejected_before_installing() {
   assert!(!result.status.success());
   assert!(String::from_utf8_lossy(&result.stderr).contains("interactive"));
   assert!(!f.root.exists());
+}
+
+#[test]
+fn builder_resolves_relative_paths_and_reports_an_absolute_artifact() {
+  let f = Fixture::new();
+  let executable = if cfg!(windows) {
+    "installer-source.exe"
+  } else {
+    "installer-source"
+  };
+  fs::copy(env!("CARGO_BIN_EXE_doinstall"), f._temp.path().join(executable)).unwrap();
+  let result = Command::new(env!("CARGO_BIN_EXE_doinstall-builder"))
+    .current_dir(f._temp.path())
+    .args([
+      "--installer",
+      executable,
+      "--config",
+      "probe.yaml",
+      "--output",
+      "delivery",
+      "--result-file",
+      "result.json",
+    ])
+    .output()
+    .unwrap();
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  let report: Value = serde_json::from_slice(&fs::read(f._temp.path().join("result.json")).unwrap()).unwrap();
+  let artifact = PathBuf::from(report["FilePath"].as_str().unwrap());
+  assert!(artifact.is_absolute() && artifact.is_file());
+  let result = Command::new(artifact)
+    .args(["--non-interactive", "--validate"])
+    .output()
+    .unwrap();
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  assert!(!f.root.exists());
+}
+
+#[test]
+fn builder_refuses_result_paths_that_mutate_inputs_or_packages() {
+  let f = Fixture::new();
+  let before = fs::read(&f.config).unwrap();
+  let output = f._temp.path().join("delivery");
+  for result in [
+    f.config.clone(),
+    f.payload.join("report.json"),
+    output.join("installer.yaml"),
+    f._temp.path().join("missing/report.json"),
+  ] {
+    let result = f.run(&[
+      "package",
+      "--output",
+      output.to_str().unwrap(),
+      "--result-file",
+      result.to_str().unwrap(),
+    ]);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("Result file"));
+    assert!(!output.exists());
+    assert_eq!(fs::read(&f.config).unwrap(), before);
+    assert!(!f.payload.join("report.json").exists());
+  }
+  f.configure(|p| p["application"]["build"] = json!({"stamp":"26279-0612"}));
+  let named = output.join("probe-1.0.0-26279-0612/installer.yaml");
+  let result = f.run(&[
+    "package",
+    "--output-parent",
+    output.to_str().unwrap(),
+    "--result-file",
+    named.to_str().unwrap(),
+  ]);
+  assert!(!result.status.success());
+  assert!(!output.exists());
+  f.good(&["package", "--output-parent", output.to_str().unwrap()]);
+  let before = fs::read(&named).unwrap();
+  let result = f.run(&[
+    "package",
+    "--output-parent",
+    output.to_str().unwrap(),
+    "--result-file",
+    named.to_str().unwrap(),
+  ]);
+  assert!(!result.status.success());
+  assert_eq!(fs::read(&named).unwrap(), before);
+}
+
+#[test]
+fn ambiguous_cli_arguments_fail_before_installation() {
+  let f = Fixture::new();
+  for args in [
+    vec!["install", "uninstall"],
+    vec!["uninstall", "install"],
+    vec!["--config", "--validate"],
+    vec!["--profile", "one", "--profile", "two"],
+    vec!["--set", "=value"],
+    vec!["--set", "additional-command=false", "--additional-command"],
+    vec!["--additional-command", "--set", "additional-command=false"],
+  ] {
+    let result = f.run(&args);
+    assert!(!result.status.success(), "Accepted {args:?}");
+    assert!(!f.root.exists());
+  }
+  let result = Command::new(env!("CARGO_BIN_EXE_doinstall-builder"))
+    .args(["--installer", "--config", "unused.yaml"])
+    .output()
+    .unwrap();
+  assert!(!result.status.success());
+  assert!(String::from_utf8_lossy(&result.stderr).contains("--installer requires a value"));
 }

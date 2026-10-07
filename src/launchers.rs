@@ -308,7 +308,7 @@ pub fn apply(prepared: &[Prepared], previous: &[OwnedFile]) -> Result<Vec<OwnedF
       && record(&item.destination).with_context(|| format!("Read existing launcher {}", item.destination.display()))?
         == desired
     {
-      // The current dotask command may be waiting in this very shim while
+      // The application command may be waiting in this very shim while
       // its installer runs. Identical launchers need no replacement; only
       // their sidecars change when a new immutable build is activated.
       result.push(desired);

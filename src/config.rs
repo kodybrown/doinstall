@@ -27,33 +27,44 @@ impl Options {
   pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Self> {
     let mut result = Self::default();
     let mut args = args.into_iter();
+    let mut action = None;
     while let Some(arg) = args.next() {
       match arg.as_str() {
-        "install" => (),
-        "uninstall" => result.uninstall = true,
+        "install" | "uninstall" => {
+          ensure!(action.is_none(), "Specify only one action: install or uninstall");
+          result.uninstall = arg == "uninstall";
+          action = Some(arg);
+        }
         "--help" | "-h" => result.help = true,
         "--interactive" | "--non-interactive" => {
           ensure!(result.interactive.is_none(), "Specify only one interaction flag");
           result.interactive = Some(arg == "--interactive");
         }
         "--validate" => result.validate = true,
-        "--config" => result.config = Some(args.next().context("--config requires a path")?.into()),
-        "--profile" => result.profile = Some(args.next().context("--profile requires a name")?),
+        "--config" => {
+          ensure!(result.config.is_none(), "Duplicate --config");
+          result.config = Some(argument_value(&mut args, &arg)?.into());
+        }
+        "--profile" => {
+          ensure!(result.profile.is_none(), "Duplicate --profile");
+          result.profile = Some(argument_value(&mut args, &arg)?);
+        }
         "--remove-settings" | "--leave-settings" => {
           ensure!(!result.settings_explicit, "Specify only one settings flag");
           result.settings_explicit = true;
           result.remove_settings = arg == "--remove-settings";
         }
         "--set" => {
-          let item = args.next().context("--set requires name=value")?;
+          let item = argument_value(&mut args, &arg)?;
           let (name, value) = item.split_once('=').context("--set requires name=value")?;
+          ensure!(!name.is_empty(), "--set requires a nonempty input name");
           ensure!(
             result.values.insert(name.into(), Value::String(value.into())).is_none(),
             "Duplicate input: {name}"
           );
         }
         "--install-dir" | "--bin-dir" | "--shortcut-name" => {
-          let value = args.next().with_context(|| format!("{arg} requires a value"))?;
+          let value = argument_value(&mut args, &arg)?;
           ensure!(
             result.values.insert(arg[2..].into(), value.into()).is_none(),
             "Duplicate input: {arg}"
@@ -66,7 +77,10 @@ impl Options {
         | "--additional-command"
         | "--start-menu-nested"
         | "--add-to-path" => {
-          result.values.insert(arg[2..].into(), true.into());
+          ensure!(
+            result.values.insert(arg[2..].into(), true.into()).is_none(),
+            "Duplicate input: {arg}"
+          );
         }
         _ => bail!("Unknown argument: {arg}. Use --help."),
       }
@@ -81,6 +95,15 @@ impl Options {
     );
     Ok(interactive)
   }
+}
+// A following option is a missing value, not a filename or input value.
+pub fn argument_value(args: &mut impl Iterator<Item = String>, option: &str) -> Result<String> {
+  let value = args.next().with_context(|| format!("{option} requires a value"))?;
+  ensure!(
+    !value.is_empty() && !value.starts_with("--"),
+    "{option} requires a value; got {value:?}"
+  );
+  Ok(value)
 }
 pub fn platform() -> &'static str {
   if cfg!(windows) {

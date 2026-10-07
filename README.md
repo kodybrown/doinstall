@@ -34,6 +34,9 @@ tool; distribute only the resulting directory (`installer[.exe]`,
 `installer.yaml`, and payload). The installer never runs producer tasks or reads
 `.dotasks.yaml`. See [the configuration and ownership contract](docs/INSTALLATION.md).
 
+Try the [runnable standalone hello example](examples/hello/README.md), which
+assembles, validates, installs, runs, and uninstalls entirely under temporary roots.
+
 Applications can select any build system. Dotask's optional `_/doinstall/*`
 adapters invoke these ordinary tools and its generic `_/installer/install`
 launcher runs the returned artifact. Doinstall does not depend on those adapters.

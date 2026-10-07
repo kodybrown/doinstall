@@ -43,7 +43,10 @@ fn run() -> Result<()> {
     None => executable.with_extension("yaml"),
   };
   if options.uninstall {
-    ensure!(!options.validate, "--validate is for package creation, not uninstall");
+    ensure!(
+      !options.validate,
+      "--validate checks an installer package and cannot be used with uninstall"
+    );
     let root = if let Some(value) = options.values.get("install-dir") {
       PathBuf::from(config::text(value)?)
     } else {

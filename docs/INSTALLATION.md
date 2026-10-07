@@ -11,8 +11,9 @@ Run the build-machine tool with explicit installer, config, and output paths:
 doinstall-builder --installer /tools/doinstall --config installer.yaml --output /delivery/example-1.0
 ```
 
-Windows tools use `.exe`. Outputs must be fresh; keep the builder out of the
-resulting distribution. Distribute the complete installer directory. Run
+Windows tools use `.exe`. Builder paths resolve from its working directory; the
+payload resolves from the configuration file. Explicit `--output` directories
+must be fresh; keep the builder out of the resulting distribution. Distribute the complete installer directory. Run
 `installer[.exe] --non-interactive --install-dir ABSOLUTE_PATH` for unattended
 installation, supplying the YAML's required inputs. Interactive behavior and
 shortcuts are controlled by `runtime`.
@@ -157,20 +158,22 @@ Failures return 1, cancellation returns 130, and success returns 0. Detailed err
 output can be captured by the invoking automation. There is no separate log-file
 or dry-run installation-plan interface yet.
 
-The install task's `--installer-args` is a JSON string array. It replaces the
-artifact's default argument tokens; `[]` clears them. It does not forward build
-options implicitly. Configure creator defaults on the creator's full target name.
+Build systems invoke the packaged executable with ordinary argument tokens:
 
 ```sh
-dotask install --installer-args '["--non-interactive", "--set", "add-to-path=false"]'
+./installer --non-interactive --set add-to-path=false --install-dir /tmp/example/apps/example
 ```
+
+Specify one action and each input only once; contradictory actions and duplicate
+input overrides fail. Options requiring a value reject a following `--option`
+as a missing value. Use `--set NAME=VALUE` for input strings beginning with `--`.
 
 ## Locations, launchers, and version retention
 
 ### Package and installed build names
 
 Versions belong to the application being packaged, never the installer engine
-or dotask tool running the creator. `application.version` is an arbitrary
+or the build tool running the builder. `application.version` is an arbitrary
 nonempty version string: SemVer, calendar versions, and custom labels are
 supported. Common filename-safe characters, including SemVer `+` metadata, stay
 readable; unsafe characters and literal percent signs are percent-encoded only
@@ -185,12 +188,17 @@ the engine captures a packaging minute without a Git revision and saves it in
 the package. Installation always uses that saved stamp. Direct installation of
 an un-packaged config without build metadata retains a content-addressed identity.
 
-`package --output-parent DIRECTORY` creates a directory named
+`doinstall-builder --output-parent DIRECTORY` (with `--installer` and `--config`)
+creates a directory named
 `<app-id>-<app-version>-<stamp>[-<git7>][-dirty]`, with the engine, YAML, and payload
 directly inside. The installed build under `app/` uses the same name without the
 `<app-id>-` prefix. `--output DIRECTORY` remains an explicit complete package-path
 override. `--result-file FILE` writes the absolute installer `FilePath` as JSON;
-creator tasks read that result instead of parsing console output.
+callers read that result instead of parsing console output. The result file's
+parent must exist, and the file must be outside the completed package and must
+not overlap the source config, installer executable, or payload. Invalid result
+paths fail before package publication. A later I/O failure writing the report
+leaves the completed package intact; the diagnostic returns failure.
 
 Identical named packages can be reused. Matching names with different payload or
 configuration are rejected without overwriting the package or installed build.
@@ -302,7 +310,7 @@ automation permission; native macOS acceptance remains pending.
 
 ## Uninstall, settings, and ownership
 
-Run the retained executable, or use the shared task without rebuilding:
+Run the retained executable without rebuilding:
 
 ```sh
 /path/to/example/installer/installer uninstall

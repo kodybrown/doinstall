@@ -8,11 +8,11 @@ The implemented interface and native acceptance limits are documented in
 
 ### Task and distribution boundaries
 
-- Dotask can group optional reusable Rust adapters under `_/doinstall/*`, with canonical sources in
-  `shared-tasks/doinstall/`. Application build/publish steps remain
-  project-specific; packaging and installation must work with non-.NET payloads.
-  Migrate existing shared install tasks through dotask management commands,
-  avoiding competing short names. PTS acceptance must use that workflow.
+- Application build/publish steps remain project-specific. Callers compile and
+  gather payloads, supply resolved YAML, invoke `doinstall-builder`, and optionally
+  archive its output. Packaging and installation work with non-.NET payloads.
+  Dotask's optional `_/doinstall/*` adapters are consumers of this ordinary CLI;
+  their task management and project acceptance belong to dotask.
 - Use a generic Rust installer, without an Inno Setup dependency or Windows
   Installed Apps integration. Retain the existing bundled Windows command shims;
   consumers do not rebuild them. The installer must support automated uninstall.
@@ -20,9 +20,9 @@ The implemented interface and native acceptance limits are documented in
   and a payload directory or ZIP. YAML carries application metadata, version,
   inputs, defaults, and installation instructions. Resolve payload paths relative
   to the YAML. No dotask or language toolchain is required on the destination.
-- `create-installer` builds a package and returns its artifact without installing;
-  `install` invokes the creator and runs the artifact. Preserve custom project
-  creators and the structured artifact contract.
+- `doinstall-builder` assembles a package without installing. Its optional JSON
+  result reports the absolute installer `FilePath`; callers choose whether to run
+  it. The shipped installer accepts install, validate, and uninstall operations.
 
 ### Inputs and desktop integration
 
@@ -77,8 +77,8 @@ Shortcut names can reference the typed `shortcut-name` input, defaulting to the
 application name, and must remain safe filesystem names after expansion. Windows
 Start Menu links optionally use `name/name.lnk`, defaulting to flat placement;
 desktop/local and Linux menu entries stay flat. Record only installer-created
-menu folders and remove them only when empty. Dotask itself declares no Start
-Menu link: a bare task-runner launch is not a useful application entry point.
+menu folders and remove them only when empty. The standalone hello example
+is a console application and declares no shortcuts.
 
 Uninstall preserves settings by default. `--leave-settings` and
 `--remove-settings` are mutually exclusive; removal is restricted to declared
@@ -165,5 +165,19 @@ to defer are:
 
 Users may invoke an older installer, but that is a new installation attempt, not
 a guaranteed data downgrade or automatic rollback. Automated failure recovery is
-also distinct from a user-requested version switch. Deferring these new engine
-features does not remove the current .NET engine's activation recovery behavior.
+also distinct from a user-requested version switch. Deferring version switching
+preserves the installer's existing forward activation recovery behavior.
+
+## Verification and release gaps
+
+Windows x64 tests exercise temporary installation, updates, ownership conflicts,
+activation recovery, shortcuts, and uninstall. Native Linux/macOS and Windows
+ARM64 acceptance remains pending; a CI job definition is not evidence of a run.
+The standalone example supplies a reproducible smoke-test flow for each host.
+
+Cargo.lock is checked in and product builds use `--locked`. CI currently installs
+floating Rust `stable`; there is no pinned release toolchain or automated release
+publication. Frozen application build metadata makes package names repeatable,
+not a claim of byte-identical compiler output. Shim source changes require LLVM
+rebuilds and native acceptance; the shim rebuild CI job verifies generated hashes
+but does not currently compare rebuilt assets against committed bytes.
