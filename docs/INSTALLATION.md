@@ -112,17 +112,40 @@ exclusive. Interactive execution requires a terminal; redirected execution fails
 with guidance to use `--non-interactive`, rather than silently installing.
 Package creation, help, and `--validate` never prompt. Missing required values,
 invalid configuration, and ownership conflicts stop with a diagnostic and nonzero
-exit code. Interactive answers replace defaults; CLI-supplied inputs skip their
-individual prompts. Automation does not require a second confirmation flag.
+exit code. Interactive answers replace defaults; CLI-supplied inputs are read-only
+in the dialog and skip their individual plain-mode prompts. Automation does not
+require a second confirmation flag.
 
-Interactive output begins with an application banner, optional copyright and
-description, then indented prompts. `Installation Settings` separates the chosen
-locations from the final confirmation. `Installation Summary` precedes results,
-errors, or cancellation; errors use a separate label and indented detail lines.
-Uninstall uses the corresponding Uninstallation sections. Separator lines span
-the current visible console width minus one column, rechecking width after
-resizes. Unicode display widths and narrow windows are respected; unavailable
-width information falls back to 80 columns. Unattended output remains plain.
+Interactive installation uses a standard Cursive dialog with three states:
+installation choices, operation progress, and a summary with a Close button.
+Uninstall uses the same flow, offering removal of declared settings unless a CLI
+settings flag already supplies the policy. The title, copyright, and description
+come from application metadata. No custom theme or UI YAML fields are supported.
+
+Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
+are shown read-only. Dependent fields are disabled until their option is enabled,
+retaining their values. Invalid inputs keep the choices screen open with a
+validation diagnostic. Configuration and result bodies scroll when space is
+limited. Below the minimum usable area (approximately 50 columns by 14 rows,
+including dialog margins), a resize message replaces the view without losing
+field values. Resizing during work does not suspend filesystem operations.
+Progress names the current operation; no overall percentage is claimed. Summary
+paths and errors wrap, and Close restores the terminal and prints operation
+messages in scrollback. Cancellation returns 130, errors return 1, success 0.
+
+`--plain` selects the original line-oriented prompts and summaries. This mode
+prints the application banner, Installation Settings, and Installation Summary
+(or corresponding Uninstallation sections). Separators follow visible console
+width, including Unicode widths and narrow windows; unavailable width information
+falls back to 80 columns. Unattended output remains plain.
+
+In the dialog, Esc/Ctrl+C or Cancel stops before destination changes begin.
+During installation or removal, Cancel requests a stop at the next safe pre-write
+checkpoint. Once destination changes begin, the operation finishes rather than
+abandoning a partially owned installation; failures retain the existing recovery
+records. A late cancellation is reported as a completed operation in the summary,
+not as an undo or rollback. Plain-mode Ctrl+C retains immediate interruption and
+its existing journal/retry behavior.
 
 The install prompts ask for the complete application directory, an optional
 additional command (default No), its directory when enabled, and on Windows
@@ -131,15 +154,18 @@ The additional directory is derived from the chosen install directory's parent,
 including interactive changes, unless YAML or `--bin-dir` supplies another path.
 If no additional command is selected, the application directory is the PATH
 candidate. A directory already on persistent user/system PATH produces an
-informational message and skips the PATH question and write. A final location
-summary precedes the install confirmation. Boolean answers accept Y/N, yes/no,
-and true/false; Enter accepts the shown default. Ctrl+C, end of input, or declining
-confirmation prints `Canceled` and exits 130. Cancellation before confirmation
-creates no installation. Interrupted activation retains its recovery journal.
+informational message and skips the registry write (and the plain-mode PATH
+question). The dialog's Install button confirms the selected settings. In plain
+mode, a final location summary precedes confirmation; boolean answers accept Y/N,
+yes/no, and true/false, and Enter accepts the shown default. Ctrl+C, end of input, or
+declining plain-mode confirmation prints `Canceled` and exits 130. Cancellation
+before confirmation creates no installation. Interrupted activation retains its
+recovery journal.
 
 ```sh
 ./installer --non-interactive --install-dir /tmp/example/apps/example --bin-dir /tmp/example/bin
 ./installer --interactive
+./installer --interactive --plain
 ./installer --non-interactive --set desktop-shortcuts=false --prune-old-versions
 ./installer --validate
 ./installer uninstall --install-dir /tmp/example/apps/example
@@ -150,8 +176,8 @@ Built-in inputs are `install-dir`, `bin-dir`, `desktop-dir`, `start-menu-dir`,
 `prune-old-versions`, plus `additional-command`, `add-to-path`, and
 `confirm-install`, `shortcut-name`, and `start-menu-nested`. These defaults and their prompt labels can be overridden using
 `defaults`, `values`, and `inputs` in installer YAML. `confirm-install` controls
-the final confirmation's default, not unattended execution. Boolean flags enable
-the corresponding option; use
+the plain-mode confirmation default; the dialog always requires its action button.
+Boolean flags enable the corresponding option; use
 `--set NAME=false` to disable it. Shortcut and pruning defaults are false unless
 YAML changes them. `--validate` checks package/configuration without installing.
 Failures return 1, cancellation returns 130, and success returns 0. Detailed errors identify failed operations;

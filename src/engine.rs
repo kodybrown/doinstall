@@ -210,6 +210,7 @@ pub(crate) fn verify_entries(package: &Package, payload: &Path) -> Result<()> {
   Ok(())
 }
 pub fn install(config_file: &Path, package: Package, options: &Options) -> Result<()> {
+  console::checkpoint("Checking package and installation settings...", true)?;
   let interactive = options.prompts(&package)?;
   if interactive {
     console::begin(&package.application, false)?;
@@ -234,6 +235,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
     !files::overlaps(&root, &payload_source),
     "Payload and installation must not overlap"
   );
+  console::checkpoint("Checking payload files...", true)?;
   let extracted = files::temporary()?;
   let payload = if payload_source.is_dir() {
     payload_source.clone()
@@ -303,6 +305,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
     console::confirm(&input, config::enabled(&values, "confirm-install"))?;
   }
   console::summary()?;
+  console::checkpoint("Checking installation ownership...", true)?;
   let _root_lock = lock(&root)?;
   let management = root.join("installer");
   let mut old = if root.exists() {
@@ -405,6 +408,9 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
       files::safe_path(Path::new(directory))?;
     }
   }
+  // From the first destination write through receipt finalization, complete the
+  // operation rather than introducing orphan builds or mixed activation on Cancel.
+  console::checkpoint("Installing application files...", true)?;
   fs::create_dir_all(&management)?;
   fs::create_dir_all(root.join("app"))?;
   let build_receipt = BuildReceipt {
@@ -476,6 +482,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
   }
   // A forward-completion record permits retrying the same package after an
   // interrupted activation without adopting unrelated launcher modifications.
+  console::checkpoint("Activating commands and shortcuts...", false)?;
   files::write_yaml(&pending_path, &receipt)?;
   if !management.join("installation.yaml").exists() {
     files::write_yaml(&management.join("installation.yaml"), &receipt)?;
@@ -497,6 +504,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
         }
       }
   });
+  console::checkpoint("Finalizing installation...", false)?;
   if config::enabled(&receipt.values, "add-to-path") {
     let _path_lock = lock(&std::env::temp_dir().join("dotask-user-path"))?;
     if user_path::add(&bin)? {
@@ -536,6 +544,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
 }
 
 pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
+  console::checkpoint("Checking installation ownership...", true)?;
   files::safe_path(root)?;
   // InstallerRunner starts in the executable's directory. On Windows that
   // working-directory handle would prevent removing installer/ itself.
@@ -605,6 +614,9 @@ pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
       }
     }
   }
+  // Once removal starts, finish or leave the existing retry journal on failure.
+  // UI cancellation is honored only before this first destructive write.
+  console::checkpoint("Removing owned commands, shortcuts, and builds...", true)?;
   receipt.uninstalling = true;
   files::write_yaml(&management.join("installation.yaml"), &receipt)?;
   for launcher in &receipt.launchers {
@@ -624,6 +636,7 @@ pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
     receipt.builds.remove(&build);
     files::write_yaml(&management.join("installation.yaml"), &receipt)?;
   }
+  console::checkpoint("Finalizing uninstall...", false)?;
   if remove_settings {
     for setting in &receipt.settings {
       let path = Path::new(setting);

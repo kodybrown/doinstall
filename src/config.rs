@@ -11,9 +11,10 @@ use std::{
   path::{Path, PathBuf},
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Options {
   pub uninstall: bool,
+  pub plain: bool,
   pub interactive: Option<bool>,
   pub validate: bool,
   pub config: Option<PathBuf>,
@@ -41,6 +42,7 @@ impl Options {
           result.interactive = Some(arg == "--interactive");
         }
         "--validate" => result.validate = true,
+        "--plain" => result.plain = true,
         "--config" => {
           ensure!(result.config.is_none(), "Duplicate --config");
           result.config = Some(argument_value(&mut args, &arg)?.into());
@@ -283,14 +285,9 @@ pub fn resolve(package: &Package, options: &Options) -> Result<BTreeMap<String, 
     user_path::contains,
   )
 }
-fn resolve_with_io(
-  package: &Package,
-  options: &Options,
-  interactive: bool,
-  reader: &mut impl BufRead,
-  writer: &mut impl Write,
-  on_path: impl Fn(&Path) -> Result<bool>,
-) -> Result<BTreeMap<String, Value>> {
+// The dialog needs unresolved defaults so required empty inputs remain editable.
+// Both presentations use the same precedence; validation still happens in resolve.
+pub fn default_values(package: &Package, options: &Options) -> Result<BTreeMap<String, Value>> {
   let mut inputs = standard_inputs();
   inputs.extend(package.runtime.inputs.clone());
   for key in package
@@ -367,6 +364,19 @@ fn resolve_with_io(
   if options.values.contains_key("bin-dir") && !options.values.contains_key("additional-command") {
     values.insert("additional-command".into(), true.into());
   }
+  Ok(values)
+}
+fn resolve_with_io(
+  package: &Package,
+  options: &Options,
+  interactive: bool,
+  reader: &mut impl BufRead,
+  writer: &mut impl Write,
+  on_path: impl Fn(&Path) -> Result<bool>,
+) -> Result<BTreeMap<String, Value>> {
+  let mut inputs = standard_inputs();
+  inputs.extend(package.runtime.inputs.clone());
+  let mut values = default_values(package, options)?;
   let leading = [
     "install-dir",
     "additional-command",

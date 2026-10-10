@@ -1,0 +1,862 @@
+//! A small Cursive form over the existing installer, not a second installation engine.
+use crate::{
+  config::{self, Options},
+  console::{self, Operation, OperationEvent},
+  engine,
+  model::{Input, Package},
+  user_path,
+};
+use anyhow::{anyhow, Result};
+use cursive::{
+  event::{Event, EventResult, Key},
+  traits::*,
+  view::{View, ViewWrapper},
+  views::{BoxedView, Checkbox, Dialog, EditView, EnableableView, LinearLayout, SelectView, TextView},
+  Cursive, Printer, Vec2,
+};
+use serde_json::Value;
+use std::{
+  collections::BTreeMap,
+  path::PathBuf,
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+  },
+  thread::JoinHandle,
+};
+
+#[derive(Clone)]
+enum Action {
+  Install { config: PathBuf, package: Package },
+  Uninstall { root: PathBuf, package: Package },
+}
+impl Action {
+  fn package(&self) -> &Package {
+    match self {
+      Self::Install { package, .. } | Self::Uninstall { package, .. } => package,
+    }
+  }
+  fn uninstall(&self) -> bool {
+    matches!(self, Self::Uninstall { .. })
+  }
+}
+#[derive(PartialEq, Debug)]
+enum Stage {
+  Choices,
+  Working,
+  Summary,
+}
+struct State {
+  action: Action,
+  options: Options,
+  inputs: BTreeMap<String, Input>,
+  values: BTreeMap<String, Value>,
+  fields: Vec<String>,
+  derived_bin: bool,
+  cancel: Arc<AtomicBool>,
+  stage: Stage,
+  messages: Vec<String>,
+  outcome: Option<Result<()>>,
+  worker: Option<JoinHandle<Result<()>>>,
+}
+
+// Keep the standard dialog/control appearance. This wrapper only substitutes a
+// resize message when too small; it retains the actual view and all field values.
+struct SizedDialog {
+  view: BoxedView,
+  fits: bool,
+}
+impl SizedDialog {
+  fn new(view: impl View) -> Self {
+    Self {
+      view: BoxedView::new(Box::new(view)),
+      fits: true,
+    }
+  }
+}
+impl ViewWrapper for SizedDialog {
+  cursive::wrap_impl!(self.view: BoxedView);
+  fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
+    self.fits = available.x >= 48 && available.y >= 12;
+    if self.fits {
+      Vec2::min(self.view.required_size(Vec2::min(available, Vec2::new(72, 30))), available)
+    } else {
+      available
+    }
+  }
+  fn wrap_layout(&mut self, size: Vec2) {
+    if self.fits {
+      self.view.layout(size);
+    }
+  }
+  fn wrap_draw(&self, printer: &Printer) {
+    if self.fits {
+      self.view.draw(printer);
+    } else {
+      printer.print((0, 0), "Terminal too small.");
+      printer.print((0, 1), "Resize to at least 50 columns x 14 rows.");
+      printer.print((0, 2), "Esc: cancel / close");
+    }
+  }
+  fn wrap_on_event(&mut self, event: Event) -> EventResult {
+    if self.fits {
+      self.view.on_event(event)
+    } else {
+      EventResult::Ignored
+    }
+  }
+}
+
+pub fn install(config: PathBuf, package: Package, options: Options) -> Result<()> {
+  config::validate(&package)?;
+  let values = config::default_values(&package, &options)?;
+  run(Action::Install { config, package }, options, values)
+}
+pub fn uninstall(root: PathBuf, package: Package, options: Options) -> Result<()> {
+  run(Action::Uninstall { root, package }, options, BTreeMap::new())
+}
+fn run(action: Action, options: Options, values: BTreeMap<String, Value>) -> Result<()> {
+  let mut siv = cursive::crossterm();
+  setup(&mut siv, action, options, values);
+  let cancel = siv.user_data::<State>().unwrap().cancel.clone();
+  let _session = console::TuiSession::begin(cancel.clone());
+  // Polling also notices external Ctrl+C requests when no keyboard event arrives.
+  siv.set_autorefresh(true);
+  siv.set_on_post_event(cursive::event::EventTrigger::any(), |s| {
+    if s
+      .user_data::<State>()
+      .is_some_and(|state| state.cancel.load(Ordering::SeqCst) && state.stage == Stage::Choices)
+    {
+      cancel_or_close(s);
+    }
+  });
+  siv.try_run().map_err(|error| {
+    // Backend initialization can fail after raw mode was enabled but before
+    // Cursive owns a backend whose Drop would restore it.
+    use cursive::backends::crossterm::crossterm::{cursor, event::DisableMouseCapture, execute, terminal};
+    let _ = terminal::disable_raw_mode();
+    let _ = execute!(
+      std::io::stdout(),
+      cursor::Show,
+      DisableMouseCapture,
+      terminal::LeaveAlternateScreen
+    );
+    anyhow!("Cannot initialize terminal UI: {error}. Use --plain for line prompts.")
+  })?;
+  let mut state = siv.take_user_data::<State>().unwrap();
+  if let Some(worker) = state.worker.take() {
+    let completed = worker.join().map_err(|_| anyhow!("Installer worker panicked"))?;
+    // If the backend exited before processing the summary callback, report the
+    // actual worker outcome rather than calling a completed install canceled.
+    if state.outcome.is_none() {
+      state.outcome = Some(completed);
+    }
+  }
+  // Cursive has restored the terminal before printing a durable scrollback result.
+  for message in &state.messages {
+    console::message(message);
+  }
+  state.outcome.unwrap_or_else(|| Err(console::Canceled.into()))
+}
+fn setup(siv: &mut Cursive, action: Action, options: Options, values: BTreeMap<String, Value>) {
+  let mut inputs = config::standard_inputs();
+  inputs.extend(action.package().runtime.inputs.clone());
+  let derived_bin = !values.contains_key("bin-dir");
+  siv.set_user_data(State {
+    action,
+    options,
+    inputs,
+    values,
+    fields: vec![],
+    derived_bin,
+    cancel: Arc::new(AtomicBool::new(false)),
+    stage: Stage::Choices,
+    messages: vec![],
+    outcome: None,
+    worker: None,
+  });
+  siv.add_global_callback(Key::Esc, cancel_or_close);
+  siv.add_global_callback(Event::CtrlChar('c'), cancel_or_close);
+  choices(siv);
+}
+fn choices(siv: &mut Cursive) {
+  let state = siv.user_data::<State>().unwrap();
+  let package = state.action.package();
+  let title = package.application.name.clone();
+  let mut content = LinearLayout::vertical();
+  for text in [
+    &package.application.copyright,
+    &package.application.description,
+  ] {
+    if !text.is_empty() {
+      content.add_child(TextView::new(text.clone()));
+    }
+  }
+  content.add_child(TextView::new(""));
+  if let Action::Uninstall { root, .. } = &state.action {
+    content.add_child(TextView::new(format!("Uninstall from {}", root.display())));
+    content.add_child(TextView::new("Application settings are preserved unless selected below."));
+    let checkbox = Checkbox::new()
+      .with_enabled(!state.options.settings_explicit)
+      .with_checked(state.options.remove_settings)
+      .with_name("remove-settings");
+    content.add_child(
+      LinearLayout::horizontal()
+        .child(checkbox)
+        .child(TextView::new(" Remove application settings")),
+    );
+  } else {
+    let mut names = vec![
+      "install-dir",
+      "additional-command",
+      "bin-dir",
+      "add-to-path",
+      "desktop-shortcuts",
+      "start-menu-shortcuts",
+      "local-shortcuts",
+      "shortcut-name",
+      "start-menu-nested",
+      "desktop-dir",
+      "start-menu-dir",
+    ];
+    names.extend(
+      state
+        .inputs
+        .keys()
+        .map(String::as_str)
+        .filter(|name| !names_contains_builtin(name)),
+    );
+    // Permission controls appear only when this package declares that capability.
+    let fields: Vec<String> = names
+      .into_iter()
+      .filter(|name| visible(package, name))
+      .filter(|name| *name != "confirm-install" && state.inputs[*name].prompt.is_some())
+      .map(str::to_owned)
+      .collect();
+    state.fields = fields.clone();
+    for name in fields {
+      let input = &state.inputs[&name];
+      let label = input.prompt.as_deref().unwrap_or(&name).to_string();
+      let raw = state.values.get(&name).and_then(|v| config::text(v).ok()).unwrap_or_default();
+      let raw = config::expand(&raw, &state.values).unwrap_or(raw);
+      let explicit = state.options.values.contains_key(&name)
+        || (name == "additional-command" && state.options.values.contains_key("bin-dir"));
+      if input.kind == "boolean" {
+        let checkbox = Checkbox::new()
+          .with_checked(raw == "true")
+          .on_change(|s, _| refresh_dependencies(s))
+          .with_name(name.clone());
+        content.add_child(
+          LinearLayout::horizontal()
+            .child(
+              EnableableView::new(checkbox)
+                .with_enabled(!explicit)
+                .with_name(format!("enabled-{name}")),
+            )
+            .child(TextView::new(format!(" {label}"))),
+        );
+      } else {
+        content.add_child(TextView::new(label));
+        let view = if input.kind == "choice" {
+          let mut choices = SelectView::<String>::new();
+          choices.add_item("Choose…", String::new());
+          for choice in &input.choices {
+            choices.add_item(choice, choice.clone());
+          }
+          let selected = input.choices.iter().position(|choice| choice == &raw).map_or(0, |i| i + 1);
+          BoxedView::new(Box::new(
+            choices.selected(selected).with_name(name.clone()).scrollable().max_height(4),
+          ))
+        } else {
+          let key = name.clone();
+          BoxedView::new(Box::new(
+            EditView::new()
+              .content(raw)
+              .on_edit(move |s, _, _| {
+                if key == "bin-dir" {
+                  s.user_data::<State>().unwrap().derived_bin = false;
+                }
+                refresh_dependencies(s);
+              })
+              .with_name(name.clone())
+              .full_width(),
+          ))
+        };
+        content.add_child(
+          EnableableView::new(view)
+            .with_enabled(!explicit)
+            .with_name(format!("enabled-{name}")),
+        );
+        content.add_child(TextView::new(""));
+      }
+    }
+    content.add_child(TextView::new("").with_name("path-status"));
+  }
+  content.add_child(TextView::new("Tab / Shift+Tab: move   Space: toggle   Esc: cancel"));
+  let action_label = if state.action.uninstall() {
+    "Uninstall"
+  } else {
+    "Install"
+  };
+  let dialog = Dialog::around(content.scrollable())
+    .title(title)
+    .button(action_label, start)
+    .button("Cancel", cancel_or_close)
+    .with_name("installer-dialog");
+  siv.add_layer(SizedDialog::new(dialog));
+  refresh_dependencies(siv);
+}
+fn names_contains_builtin(name: &str) -> bool {
+  [
+    "install-dir",
+    "additional-command",
+    "bin-dir",
+    "add-to-path",
+    "desktop-shortcuts",
+    "start-menu-shortcuts",
+    "local-shortcuts",
+    "shortcut-name",
+    "start-menu-nested",
+    "desktop-dir",
+    "start-menu-dir",
+  ]
+  .contains(&name)
+}
+fn visible(package: &Package, name: &str) -> bool {
+  match name {
+    "add-to-path" => cfg!(windows),
+    "desktop-shortcuts" | "desktop-dir" => package.runtime.shortcuts.iter().any(|s| s.desktop),
+    "start-menu-shortcuts" | "start-menu-dir" => {
+      !cfg!(target_os = "macos") && package.runtime.shortcuts.iter().any(|s| s.start_menu)
+    }
+    "local-shortcuts" => package.runtime.shortcuts.iter().any(|s| s.local),
+    "start-menu-nested" => cfg!(windows) && package.runtime.shortcuts.iter().any(|s| s.start_menu),
+    "shortcut-name" => package.runtime.shortcuts.iter().any(|s| s.name.contains("${shortcut-name}")),
+    _ => true,
+  }
+}
+fn form_values(siv: &mut Cursive) -> BTreeMap<String, Value> {
+  let state = siv.user_data::<State>().unwrap();
+  let mut values = state.values.clone();
+  let fields = state.fields.clone();
+  let inputs = state.inputs.clone();
+  for name in fields {
+    let value = match inputs[&name].kind.as_str() {
+      "boolean" => siv.call_on_name(&name, |view: &mut Checkbox| Value::Bool(view.is_checked())),
+      "choice" => siv.call_on_name(&name, |view: &mut SelectView<String>| {
+        Value::String(view.selection().map(|v| (*v).clone()).unwrap_or_default())
+      }),
+      _ => siv.call_on_name(&name, |view: &mut EditView| Value::String(view.get_content().to_string())),
+    };
+    if let Some(value) = value {
+      values.insert(name, value);
+    }
+  }
+  values
+}
+fn refresh_dependencies(siv: &mut Cursive) {
+  let state = siv.user_data::<State>().unwrap();
+  if state.action.uninstall() || state.stage != Stage::Choices {
+    return;
+  }
+  let fields = state.fields.clone();
+  let derived = state.derived_bin;
+  let options = state.options.clone();
+  let mut values = form_values(siv);
+  if derived
+    && let Ok(root) = config::path(&values, "install-dir")
+    && let Some(parent) = root.parent()
+  {
+    let suggested = parent.to_string_lossy().to_string();
+    // set_content returns its callback; do not execute it for a programmatic default.
+    siv.call_on_name("bin-dir", |view: &mut EditView| {
+      let _ = view.set_content(suggested.clone());
+    });
+    values.insert("bin-dir".into(), suggested.into());
+  }
+  for name in fields {
+    let allowed = match name.as_str() {
+      "bin-dir" => config::enabled(&values, "additional-command"),
+      "desktop-dir" => config::enabled(&values, "desktop-shortcuts"),
+      "start-menu-dir" | "start-menu-nested" => config::enabled(&values, "start-menu-shortcuts"),
+      "shortcut-name" => [
+        "desktop-shortcuts",
+        "start-menu-shortcuts",
+        "local-shortcuts",
+      ]
+      .iter()
+      .any(|key| config::enabled(&values, key)),
+      _ => true,
+    } && !options.values.contains_key(&name)
+      && !(name == "additional-command" && options.values.contains_key("bin-dir"));
+    let wrapper = format!("enabled-{name}");
+    if siv
+      .call_on_name(&wrapper, |view: &mut EnableableView<BoxedView>| view.set_enabled(allowed))
+      .is_none()
+    {
+      siv.call_on_name(&wrapper, |view: &mut EnableableView<cursive::views::NamedView<Checkbox>>| {
+        view.set_enabled(allowed)
+      });
+    }
+  }
+  let status = match config::command_directory(&values) {
+    Ok(directory) if cfg!(windows) => match user_path::contains(&directory) {
+      Ok(true) => "Selected command directory is already on PATH.".into(),
+      Ok(false) if config::enabled(&values, "add-to-path") => {
+        "Selected command directory will be added to user PATH.".into()
+      }
+      Ok(false) => "Selected command directory will not be added to PATH.".into(),
+      Err(error) => format!("Cannot check PATH: {error:#}"),
+    },
+    Ok(_) => "Add the selected command directory to your shell PATH manually.".into(),
+    Err(_) => "Enter an absolute installation and command directory.".into(),
+  };
+  siv.call_on_name("path-status", |view: &mut TextView| view.set_content(status));
+}
+fn start(siv: &mut Cursive) {
+  let state = siv.user_data::<State>().unwrap();
+  if state.stage != Stage::Choices {
+    return;
+  }
+  let action = state.action.clone();
+  let mut options = state.options.clone();
+  options.interactive = Some(false);
+  if action.uninstall() {
+    options.remove_settings = siv
+      .call_on_name("remove-settings", |view: &mut Checkbox| view.is_checked())
+      .unwrap_or(false);
+    options.settings_explicit = true;
+  } else {
+    options.values = form_values(siv);
+    if let Err(error) =
+      config::resolve(action.package(), &options).and_then(|values| config::path(&values, "install-dir").map(|_| ()))
+    {
+      siv.add_layer(SizedDialog::new(Dialog::info(format!(
+        "Check installation settings:\n{error:#}"
+      ))));
+      return;
+    }
+  }
+  let state = siv.user_data::<State>().unwrap();
+  state.stage = Stage::Working;
+  let cancel = state.cancel.clone();
+  let title = action.package().application.name.clone();
+  siv.pop_layer();
+  siv.add_layer(SizedDialog::new(
+    Dialog::around(
+      LinearLayout::vertical()
+        .child(TextView::new("Preparing…").with_name("progress"))
+        .child(
+          TextView::new(
+            "Cancellation stops before destination changes begin.\nOnce changes begin, the operation finishes safely.",
+          )
+          .scrollable()
+          .max_height(4),
+        ),
+    )
+    .title(title)
+    .button("Cancel", cancel_or_close),
+  ));
+  let sink = siv.cb_sink().clone();
+  let events = sink.clone();
+  let operation = Operation {
+    cancel: cancel.clone(),
+    report: Arc::new(move |event| {
+      let _ = events.send(Box::new(move |s| report(s, event)));
+    }),
+  };
+  let worker = std::thread::spawn(move || {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      console::with_operation(operation, || match action {
+        Action::Install { config, package } => engine::install(&config, package, &options),
+        Action::Uninstall { root, .. } => engine::uninstall(&root, &options),
+      })
+    }))
+    .unwrap_or_else(|_| Err(anyhow!("Installer worker panicked; inspect the installation before retrying.")));
+    let summary = match &outcome {
+      Ok(()) => Ok(()),
+      Err(error) if error.is::<console::Canceled>() => Err(console::Canceled.into()),
+      Err(error) => Err(anyhow!("{error:#}")),
+    };
+    let _ = sink.send(Box::new(move |s| finished(s, summary)));
+    outcome
+  });
+  siv.user_data::<State>().unwrap().worker = Some(worker);
+}
+fn report(siv: &mut Cursive, event: OperationEvent) {
+  match event {
+    OperationEvent::Phase(label) => {
+      siv.call_on_name("progress", |view: &mut TextView| view.set_content(label));
+    }
+    OperationEvent::Message(message) | OperationEvent::Warning(message) => {
+      siv.user_data::<State>().unwrap().messages.push(message);
+    }
+  }
+}
+fn finished(siv: &mut Cursive, outcome: Result<()>) {
+  let state = siv.user_data::<State>().unwrap();
+  state.stage = Stage::Summary;
+  let result = match &outcome {
+    Ok(()) => if state.cancel.load(Ordering::SeqCst) { "Completed. Cancellation arrived after destination changes began.".to_string() } else { "Completed.".to_string() },
+    Err(error) if error.is::<console::Canceled>() => "Canceled before destination changes began.".into(),
+    Err(error) => format!("Installer error:\n{error:#}\n\nIf activation or removal was interrupted, retry with the same package and locations."),
+  };
+  let title = state.action.package().application.name.clone();
+  let summary = if state.messages.is_empty() {
+    result
+  } else {
+    format!("{result}\n\n{}", state.messages.join("\n\n"))
+  };
+  state.outcome = Some(outcome);
+  siv.pop_layer();
+  siv.add_layer(SizedDialog::new(
+    Dialog::around(TextView::new(summary).scrollable())
+      .title(format!("{title} — Summary"))
+      .button("Close", |s| s.quit()),
+  ));
+}
+fn cancel_or_close(siv: &mut Cursive) {
+  let state = siv.user_data::<State>().unwrap();
+  match state.stage {
+    Stage::Choices => {
+      state.outcome = Some(Err(console::Canceled.into()));
+      siv.quit();
+    }
+    Stage::Working => {
+      state.cancel.store(true, Ordering::SeqCst);
+      siv.call_on_name("progress", |view: &mut TextView| {
+        view.set_content("Cancellation requested; waiting for a safe stopping point…")
+      });
+    }
+    Stage::Summary => siv.quit(),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use cursive::{
+    backend::{Backend, Dummy},
+    theme::{Color, ColorPair, Effect},
+  };
+  use serde_json::json;
+  use std::sync::atomic::AtomicUsize;
+
+  // Exercise Cursive's real event dispatch/layout without an active terminal.
+  struct Headless {
+    size: Arc<AtomicUsize>,
+    dummy: Dummy,
+    output: Arc<std::sync::Mutex<String>>,
+  }
+  impl Backend for Headless {
+    fn poll_event(&mut self) -> Option<Event> {
+      None
+    }
+    fn set_title(&mut self, _: String) {}
+    fn refresh(&mut self) {}
+    fn has_colors(&self) -> bool {
+      false
+    }
+    fn screen_size(&self) -> Vec2 {
+      let width = self.size.load(Ordering::SeqCst);
+      Vec2::new(width, if width < 48 { 8 } else { 32 })
+    }
+    fn move_to(&self, _: Vec2) {}
+    fn print(&self, text: &str) {
+      self.output.lock().unwrap().push_str(text);
+    }
+    fn clear(&self, _: Color) {}
+    fn set_color(&self, pair: ColorPair) -> ColorPair {
+      self.dummy.set_color(pair)
+    }
+    fn set_effect(&self, _: Effect) {}
+    fn unset_effect(&self, _: Effect) {}
+  }
+  fn backend(size: Arc<AtomicUsize>) -> Box<dyn Backend> {
+    Box::new(Headless {
+      size,
+      dummy: Dummy,
+      output: Arc::new(std::sync::Mutex::new(String::new())),
+    })
+  }
+  fn fixture() -> (tempfile::TempDir, Cursive, PathBuf) {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("application");
+    let payload = temp.path().join("payload");
+    std::fs::create_dir(&payload).unwrap();
+    let executable = if cfg!(windows) { "probe.exe" } else { "probe" };
+    std::fs::write(payload.join(executable), "test application").unwrap();
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      std::fs::set_permissions(payload.join(executable), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let package: Package = serde_json::from_value(json!({
+      "schema":1, "application":{"id":"probe","name":"Probe","version":"1.0"},
+      "platform": config::platform(), "architecture":config::architecture(), "payload":payload,
+      "runtime":{"commands":[{"name":"probe","executable":executable}],
+        "inputs":{"channel":{"type":"choice","required":true,"choices":["stable","preview"],"default":"stable","prompt":"Channel"}},
+        "values":{"install-dir":root,"add-to-path":false}}
+    })).unwrap();
+    let mut siv = Cursive::new();
+    let options = Options::default();
+    let values = config::default_values(&package, &options).unwrap();
+    setup(
+      &mut siv,
+      Action::Install {
+        config: temp.path().join("source.yaml"),
+        package,
+      },
+      options,
+      values,
+    );
+    (temp, siv, root)
+  }
+  #[test]
+  fn tab_checkbox_dependencies_and_reverse_tab_use_standard_controls() {
+    let (_temp, mut siv, _root) = fixture();
+    let mut runner = siv.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    runner.focus_name("install-dir").unwrap();
+    runner.on_event(Event::Key(Key::Tab));
+    runner.on_event(Event::Char(' '));
+    assert_eq!(form_values(&mut runner)["additional-command"], true);
+    assert!(runner
+      .call_on_name("enabled-bin-dir", |v: &mut EnableableView<BoxedView>| v.is_enabled())
+      .unwrap());
+    runner.on_event(Event::Key(Key::Tab));
+    runner.on_event(Event::Shift(Key::Tab));
+    runner.on_event(Event::Char(' '));
+    assert_eq!(form_values(&mut runner)["additional-command"], false);
+    assert!(!runner
+      .call_on_name("enabled-bin-dir", |v: &mut EnableableView<BoxedView>| v.is_enabled())
+      .unwrap());
+  }
+  #[test]
+  fn location_changes_derive_bin_until_user_edits_it_and_resize_preserves_values() {
+    let (temp, mut siv, _) = fixture();
+    let size = Arc::new(AtomicUsize::new(100));
+    let mut runner = siv.runner(backend(size.clone()));
+    runner.refresh();
+    let root = temp.path().join("other/application").to_string_lossy().to_string();
+    let callback = runner
+      .call_on_name("install-dir", |v: &mut EditView| v.set_content(root.clone()))
+      .unwrap();
+    callback(&mut runner);
+    assert_eq!(
+      form_values(&mut runner)["bin-dir"],
+      temp.path().join("other").to_string_lossy().as_ref()
+    );
+    runner.user_data::<State>().unwrap().derived_bin = false;
+    let custom = temp.path().join("custom-bin").to_string_lossy().to_string();
+    runner.call_on_name("bin-dir", |v: &mut EditView| {
+      let _ = v.set_content(custom.clone());
+    });
+    size.store(30, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    assert_eq!(form_values(&mut runner)["install-dir"], root);
+    size.store(100, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    refresh_dependencies(&mut runner);
+    assert_eq!(form_values(&mut runner)["bin-dir"], custom);
+  }
+  #[test]
+  fn invalid_values_keep_choices_and_escape_cancels_without_mutation() {
+    let (_temp, mut siv, root) = fixture();
+    siv.call_on_name("install-dir", |v: &mut EditView| {
+      let _ = v.set_content("relative-path");
+    });
+    start(&mut siv);
+    assert_eq!(siv.user_data::<State>().unwrap().stage, Stage::Choices);
+    assert!(!root.exists());
+    // First dismiss validation, then cancel the choices dialog.
+    siv.pop_layer();
+    siv.on_event(Event::Key(Key::Esc));
+    assert!(siv
+      .user_data::<State>()
+      .unwrap()
+      .outcome
+      .as_ref()
+      .unwrap()
+      .as_ref()
+      .unwrap_err()
+      .is::<console::Canceled>());
+  }
+  #[test]
+  fn worker_installs_reports_summary_and_uninstalls_with_temporary_roots() {
+    let (_temp, mut siv, root) = fixture();
+    let mut runner = siv.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    start(&mut runner);
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Working);
+    let _ = runner.user_data::<State>().unwrap().worker.take().unwrap().join().unwrap();
+    runner.process_events();
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Summary);
+    assert!(runner.user_data::<State>().unwrap().outcome.as_ref().unwrap().is_ok());
+    assert!(!runner.user_data::<State>().unwrap().messages.is_empty());
+    assert!(root.join("installer/installation.yaml").is_file());
+    drop(runner);
+    let package: Package = crate::files::read_yaml(&root.join("installer/installer.yaml")).unwrap();
+    let mut uninstall = Cursive::new();
+    setup(
+      &mut uninstall,
+      Action::Uninstall {
+        root: root.clone(),
+        package,
+      },
+      Options::default(),
+      BTreeMap::new(),
+    );
+    let mut runner = uninstall.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    start(&mut runner);
+    let _ = runner.user_data::<State>().unwrap().worker.take().unwrap().join().unwrap();
+    runner.process_events();
+    assert!(runner.user_data::<State>().unwrap().outcome.as_ref().unwrap().is_ok());
+    assert!(!root.exists());
+  }
+  #[test]
+  fn cancellation_before_work_does_not_create_an_installation() {
+    let (_temp, mut siv, root) = fixture();
+    siv.user_data::<State>().unwrap().cancel.store(true, Ordering::SeqCst);
+    let mut runner = siv.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    start(&mut runner);
+    let _ = runner.user_data::<State>().unwrap().worker.take().unwrap().join().unwrap();
+    runner.process_events();
+    assert!(runner
+      .user_data::<State>()
+      .unwrap()
+      .outcome
+      .as_ref()
+      .unwrap()
+      .as_ref()
+      .unwrap_err()
+      .is::<console::Canceled>());
+    assert!(!root.exists());
+  }
+  #[test]
+  fn explicit_cli_values_remain_disabled_and_uninstall_settings_are_respected() {
+    let (_temp, mut siv, root) = fixture();
+    let package = siv.user_data::<State>().unwrap().action.package().clone();
+    let options = Options {
+      values: BTreeMap::from([("install-dir".into(), root.to_string_lossy().to_string().into())]),
+      ..Options::default()
+    };
+    let mut other = Cursive::new();
+    setup(
+      &mut other,
+      Action::Install {
+        config: PathBuf::from("unused"),
+        package: package.clone(),
+      },
+      options.clone(),
+      config::default_values(&package, &options).unwrap(),
+    );
+    assert!(!other
+      .call_on_name("enabled-install-dir", |v: &mut EnableableView<BoxedView>| v.is_enabled())
+      .unwrap());
+    let mut uninstall = Cursive::new();
+    setup(
+      &mut uninstall,
+      Action::Uninstall { root, package },
+      Options {
+        remove_settings: true,
+        settings_explicit: true,
+        ..Options::default()
+      },
+      BTreeMap::new(),
+    );
+    assert!(uninstall
+      .call_on_name("remove-settings", |v: &mut Checkbox| v.is_checked())
+      .unwrap());
+  }
+  #[test]
+  fn owned_state_finishes_when_cancellation_arrives_during_activation() {
+    let (_temp, mut siv, root) = fixture();
+    let action = siv.user_data::<State>().unwrap().action.clone();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let signal = cancel.clone();
+    let operation = Operation {
+      cancel,
+      report: Arc::new(move |event| {
+        if let OperationEvent::Phase(label) = event
+          && label.starts_with("Activating")
+        {
+          signal.store(true, Ordering::SeqCst);
+        }
+      }),
+    };
+    let Action::Install { config, package } = action else {
+      unreachable!()
+    };
+    let options = Options {
+      interactive: Some(false),
+      ..Options::default()
+    };
+    console::with_operation(operation, || engine::install(&config, package, &options)).unwrap();
+    assert!(root.join("installer/installation.yaml").is_file());
+    assert!(!root.join("installer/pending.yaml").exists());
+    engine::uninstall(&root, &options).unwrap();
+  }
+  #[test]
+  fn ownership_failure_is_shown_in_summary_and_preserves_unowned_files() {
+    let (_temp, mut siv, root) = fixture();
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("unowned.txt"), "keep").unwrap();
+    let mut runner = siv.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    start(&mut runner);
+    let _ = runner.user_data::<State>().unwrap().worker.take().unwrap().join().unwrap();
+    runner.process_events();
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Summary);
+    let error = runner
+      .user_data::<State>()
+      .unwrap()
+      .outcome
+      .as_ref()
+      .unwrap()
+      .as_ref()
+      .unwrap_err();
+    assert!(format!("{error:#}").contains("Choose a fresh install-dir"));
+    assert_eq!(std::fs::read_to_string(root.join("unowned.txt")).unwrap(), "keep");
+    assert_eq!(std::fs::read_dir(root).unwrap().count(), 1);
+  }
+  #[test]
+  fn undersized_terminal_displays_resize_message_and_blocks_install_button() {
+    let (_temp, mut siv, root) = fixture();
+    let size = Arc::new(AtomicUsize::new(30));
+    let output = Arc::new(std::sync::Mutex::new(String::new()));
+    let mut runner = siv.runner(Box::new(Headless {
+      size: size.clone(),
+      dummy: Dummy,
+      output: output.clone(),
+    }));
+    runner.refresh();
+    assert!(output.lock().unwrap().contains("Terminal too small."));
+    runner.call_on_name("installer-dialog", |view: &mut Dialog| {
+      let _ = view.set_focus(cursive::views::DialogFocus::Button(0));
+    });
+    runner.on_event(Event::Key(Key::Enter));
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Choices);
+    assert!(!root.exists());
+    size.store(100, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    runner.on_event(Event::Key(Key::Enter));
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Working);
+    let _ = runner.user_data::<State>().unwrap().worker.take().unwrap().join().unwrap();
+    runner.process_events();
+    assert!(runner.user_data::<State>().unwrap().outcome.as_ref().unwrap().is_ok());
+    engine::uninstall(
+      &root,
+      &Options {
+        interactive: Some(false),
+        ..Options::default()
+      },
+    )
+    .unwrap();
+  }
+}

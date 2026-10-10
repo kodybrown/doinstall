@@ -1,0 +1,56 @@
+param(
+    [Parameter(Mandatory = $true)][string]$Installer,
+    [Parameter(Mandatory = $true)][string]$Builder
+)
+$ErrorActionPreference = 'Stop'
+$Installer = (Resolve-Path -LiteralPath $Installer).Path
+$Builder = (Resolve-Path -LiteralPath $Builder).Path
+$hostTriple = (& rustc -vV | Select-String '^host: ').ToString().Substring(6)
+if ($LASTEXITCODE -ne 0) { throw 'rustc -vV failed' }
+$architecture = if ($hostTriple.StartsWith('aarch64-')) { 'arm64' } elseif ($hostTriple.StartsWith('x86_64-')) { 'x64' } else { throw "Unsupported host: $hostTriple" }
+$stage = Join-Path ([IO.Path]::GetTempPath()) ('doinstall-preview-' + [guid]::NewGuid())
+$application = Join-Path $stage 'application'
+New-Item -ItemType Directory -Path (Join-Path $stage 'payload') | Out-Null
+try {
+    & rustc (Join-Path $PSScriptRoot 'main.rs') -o (Join-Path $stage 'payload/hello.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Example compilation failed' }
+    # JSON is valid YAML and safely quotes paths containing spaces or backslashes.
+    $config = @{
+        schema = 1
+        application = @{ id = 'hello'; name = 'Hello Example'; version = '1.0.0'; description = 'An application packaged by DoInstall.' }
+        platform = 'windows'
+        architecture = $architecture
+        payload = 'payload'
+        runtime = @{
+            interactive = $true
+            commands = @(@{ name = 'hello'; executable = 'hello.exe' })
+            values = @{
+                'install-dir' = $application
+                'bin-dir' = (Join-Path $stage 'commands')
+                'additional-command' = $false
+                'add-to-path' = $false
+            }
+        }
+    }
+    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stage 'source.yaml') -Encoding utf8
+    & $Builder --installer $Installer --config (Join-Path $stage 'source.yaml') --output (Join-Path $stage 'delivery')
+    if ($LASTEXITCODE -ne 0) { throw 'Assembly failed' }
+    $package = Join-Path $stage 'delivery/installer.exe'
+    Write-Host "Preview root: $stage"
+    Write-Host 'Keep preview installation and command paths under this temporary root.'
+    # Make PATH immutable in the form so this preview never changes user PATH.
+    & $package --interactive --set add-to-path=false
+    if ($LASTEXITCODE -notin @(0, 130)) { throw 'Installer reported an error' }
+    if (Test-Path -LiteralPath (Join-Path $application 'installer/installation.yaml')) {
+        & $package uninstall --non-interactive --install-dir $application
+        if ($LASTEXITCODE -ne 0) { throw 'Preview uninstall failed' }
+    }
+}
+finally {
+    $resolvedStage = [IO.Path]::GetFullPath($stage)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (!$resolvedStage.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or !(Split-Path $resolvedStage -Leaf).StartsWith('doinstall-preview-')) {
+        throw "Refusing cleanup outside preview temporary root: $resolvedStage"
+    }
+    Remove-Item -LiteralPath $resolvedStage -Recurse
+}

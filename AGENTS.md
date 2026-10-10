@@ -1,7 +1,7 @@
 # doinstall Agent Notes
 
 - Product: doinstall; standalone Rust installer and build-machine builder.
-- Work directly in this checkout on main, as explicitly requested by the user.
+- Work directly in this checkout on develop, as explicitly requested by the user.
   Do not create worktrees or delegate agents unless requested. Preserve unrelated
   changes and never change the user's active installation or PATH in tests.
 - Commit scoped, verified changes before handoff. Include a dated entry at the

@@ -32,3 +32,19 @@ and any delivery archive. Replace `main.rs` with your project's build output and
 adapt the generated YAML. Distribute the entire `delivery/` directory; do not
 include `doinstall-builder`. Its recipient needs only the packaged installer and
 any runtime required by the application. See [the YAML contract](../../docs/INSTALLATION.md).
+
+## Interactive Windows preview
+
+After building the tools, open a plain Cursive installer dialog:
+
+```powershell
+$target = (cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json).target_directory
+.\examples\hello\preview.ps1 -Installer "$target/release/doinstall.exe" -Builder "$target/release/doinstall-builder.exe"
+```
+
+Tab/Shift+Tab moves between enabled controls; Space toggles a checkbox. Install
+shows progress and a summary, and Close returns to the script. Esc/Ctrl+C cancels
+choices or requests cancellation during work. Keep edited locations beneath the
+printed temporary preview root. The PATH option is locked off, and the script
+removes its generated temporary directory after the dialog closes. It also runs
+uninstall when the application remains at its initial preview location.

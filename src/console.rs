@@ -1,10 +1,90 @@
 use crate::model::{Application, Input};
 use anyhow::{bail, ensure, Result};
 use std::{
+  cell::RefCell,
   io::{BufRead, IsTerminal, Write},
-  sync::atomic::{AtomicBool, Ordering},
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+  },
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+// Only the worker's output is captured; builder and unattended output stay plain.
+#[derive(Clone, Debug)]
+pub enum OperationEvent {
+  Phase(String),
+  Message(String),
+  Warning(String),
+}
+#[derive(Clone)]
+pub struct Operation {
+  pub cancel: Arc<AtomicBool>,
+  pub report: Arc<dyn Fn(OperationEvent) + Send + Sync>,
+}
+thread_local! {
+  static OPERATION: RefCell<Option<Operation>> = const { RefCell::new(None) };
+}
+static TUI_CANCEL: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+pub struct TuiSession;
+impl TuiSession {
+  pub fn begin(cancel: Arc<AtomicBool>) -> Self {
+    *TUI_CANCEL.lock().unwrap() = Some(cancel);
+    Self
+  }
+}
+impl Drop for TuiSession {
+  fn drop(&mut self) {
+    *TUI_CANCEL.lock().unwrap() = None;
+  }
+}
+pub fn request_tui_cancel() -> bool {
+  if let Some(cancel) = TUI_CANCEL.lock().unwrap().as_ref() {
+    cancel.store(true, Ordering::SeqCst);
+    true
+  } else {
+    false
+  }
+}
+pub fn with_operation<T>(operation: Operation, action: impl FnOnce() -> T) -> T {
+  struct Reset;
+  impl Drop for Reset {
+    fn drop(&mut self) {
+      OPERATION.with(|slot| *slot.borrow_mut() = None);
+    }
+  }
+  OPERATION.with(|slot| *slot.borrow_mut() = Some(operation));
+  let _reset = Reset;
+  action()
+}
+pub fn checkpoint(label: &str, cancelable: bool) -> Result<()> {
+  OPERATION.with(|slot| {
+    if let Some(operation) = slot.borrow().as_ref() {
+      if cancelable && operation.cancel.load(Ordering::SeqCst) {
+        bail!(Canceled);
+      }
+      (operation.report)(OperationEvent::Phase(label.into()));
+    }
+    Ok(())
+  })
+}
+fn captured(event: OperationEvent) -> bool {
+  OPERATION.with(|slot| {
+    if let Some(operation) = slot.borrow().as_ref() {
+      (operation.report)(event);
+      true
+    } else {
+      false
+    }
+  })
+}
+
+// A caught worker panic must become a summary diagnostic rather than printing
+// directly over Cursive's active screen. Other panics keep Rust's usual handler.
+pub fn report_worker_panic(info: &std::panic::PanicHookInfo<'_>) -> bool {
+  captured(OperationEvent::Warning(format!("Installer worker panicked: {info}")))
+}
 
 static INTERACTIVE: AtomicBool = AtomicBool::new(false);
 static SUMMARY_STARTED: AtomicBool = AtomicBool::new(false);
@@ -38,6 +118,9 @@ pub fn summary() -> Result<()> {
   Ok(())
 }
 pub fn message(text: &str) {
+  if captured(OperationEvent::Message(text.into())) {
+    return;
+  }
   let padding = if INTERACTIVE.load(Ordering::SeqCst) {
     "  "
   } else {
@@ -48,6 +131,9 @@ pub fn message(text: &str) {
   }
 }
 pub fn diagnostic(text: &str) {
+  if captured(OperationEvent::Warning(text.into())) {
+    return;
+  }
   let padding = if INTERACTIVE.load(Ordering::SeqCst) {
     "  "
   } else {

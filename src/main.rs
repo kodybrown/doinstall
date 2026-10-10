@@ -5,16 +5,25 @@ mod engine;
 mod files;
 mod launchers;
 mod model;
+mod tui;
 mod user_path;
 
 use anyhow::{ensure, Context, Result};
 use std::path::PathBuf;
 fn main() {
-  // Keep Ctrl+C's existing immediate exit behavior. Activation journals make
-  // interruption recoverable; printing here also works while stdin is blocked.
+  let default_panic = std::panic::take_hook();
+  std::panic::set_hook(Box::new(move |info| {
+    if !console::report_worker_panic(info) {
+      default_panic(info);
+    }
+  }));
+  // TUI cancellation returns through backend cleanup. Plain execution retains
+  // immediate interruption, with activation journals available for recovery.
   if let Err(error) = ctrlc::set_handler(|| {
-    console::canceled();
-    std::process::exit(130);
+    if !console::request_tui_cancel() {
+      console::canceled();
+      std::process::exit(130);
+    }
   }) {
     console::error(&error.into());
     std::process::exit(1);
@@ -33,7 +42,7 @@ fn run() -> Result<()> {
   let options = config::Options::parse(arguments)?;
   if options.help {
     println!(
-            "doinstall [install|uninstall] [--config FILE]\n  --interactive | --non-interactive  Override installer.yaml prompt mode\n  --install-dir ABSOLUTE_PATH   Installation root\n  --bin-dir ABSOLUTE_PATH       Enable an additional command in this directory\n  --additional-command         Enable the additional command (default: false)\n  --add-to-path                Add the selected command directory to user PATH (Windows)\n  --set NAME=VALUE              Override a YAML input\n  --profile NAME               Select environment defaults\n  --prune-old-versions          Keep new and previously active builds\n  --desktop-shortcuts --start-menu-shortcuts --local-shortcuts\n  --shortcut-name NAME         Name for shortcuts using ${{shortcut-name}}, without extension\n  --start-menu-nested          Nest Windows shortcuts under name/name.lnk\n  --leave-settings | --remove-settings  Uninstall settings policy\n  --validate                   Validate package without installing or prompting\nInteractive by default; use --non-interactive for automation. Rollback and version switching are not supported."
+            "doinstall [install|uninstall] [--config FILE]\n  --interactive | --non-interactive  Override installer.yaml prompt mode\n  --plain                      Use line prompts instead of the interactive dialog\n  --install-dir ABSOLUTE_PATH   Installation root\n  --bin-dir ABSOLUTE_PATH       Enable an additional command in this directory\n  --additional-command         Enable the additional command (default: false)\n  --add-to-path                Add the selected command directory to user PATH (Windows)\n  --set NAME=VALUE              Override a YAML input\n  --profile NAME               Select environment defaults\n  --prune-old-versions          Keep new and previously active builds\n  --desktop-shortcuts --start-menu-shortcuts --local-shortcuts\n  --shortcut-name NAME         Name for shortcuts using ${{shortcut-name}}, without extension\n  --start-menu-nested          Nest Windows shortcuts under name/name.lnk\n  --leave-settings | --remove-settings  Uninstall settings policy\n  --validate                   Validate package without installing or prompting\nInteractive by default; use --non-interactive for automation. Rollback and version switching are not supported."
         );
     return Ok(());
   }
@@ -64,10 +73,19 @@ fn run() -> Result<()> {
         .to_path_buf()
     };
     let root = files::absolute(&root, &std::env::current_dir()?)?;
+    if !options.plain && options.interactive != Some(false) {
+      let package: model::Package = files::read_yaml(&root.join("installer/installer.yaml"))?;
+      if options.prompts(&package)? {
+        return tui::uninstall(root, package, options);
+      }
+    }
     engine::uninstall(&root, &options)
   } else {
     ensure!(!options.settings_explicit, "Settings flags are only valid with uninstall");
     let package = files::read_yaml(&config_file)?;
+    if !options.plain && options.prompts(&package)? {
+      return tui::install(config_file, package, options);
+    }
     engine::install(&config_file, package, &options)
   }
 }

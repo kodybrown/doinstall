@@ -41,6 +41,14 @@ Applications can select any build system. Dotask's optional `_/doinstall/*`
 adapters invoke these ordinary tools and its generic `_/installer/install`
 launcher runs the returned artifact. Doinstall does not depend on those adapters.
 
+## Interactive installer
+
+Install and uninstall use a plain Cursive dialog with standard controls and
+keyboard navigation when interactive execution is selected. Choices, progress,
+and summary occupy separate screens. `--plain` uses the original line prompts;
+`--non-interactive` keeps automation output plain. No theme configuration is added.
+Try the [temporary Windows UI preview](examples/hello/README.md#interactive-windows-preview).
+
 ## Development and acceptance
 
 `verify` runs formatting, Rust tests, clippy, shim hashes, and Git whitespace.

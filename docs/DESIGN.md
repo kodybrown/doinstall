@@ -40,16 +40,18 @@ Always create stable commands in the chosen app root. Additional commands are
 optional, default No, and suggest that root's parent instead of consulting `BIN`.
 Windows can append the selected command directory to user PATH, preserving
 existing entries; an existing persistent PATH entry skips that question.
-Confirmation follows a location summary. Ctrl+C prints `Canceled` and exits 130;
-activation journals preserve the existing recovery contract. YAML owns prompt
+The dialog action button confirms its displayed choices; plain prompts confirm
+a location summary. Cancellation returns 130; activation journals preserve the
+existing recovery contract. YAML owns prompt
 labels and defaults, while CLI values override individual questions.
 
 The standalone installer reads only its packaged installer YAML. The creator
 maps project settings to that document explicitly; it does not make the installer
 depend on source-project configuration. Application name, optional copyright,
-and description own the console banner. Interactive prompts, settings, and summary
-use consistent indentation and separators sized to the visible console width
-minus one column; unattended output stays plain. Shortcut declarations grant
+and description own the dialog title/banner. Interactive execution uses Cursive's
+standard controls and appearance, with choices, operation progress, and summary
+states. No custom theme is implemented. `--plain` retains indented line prompts
+and separators sized to the visible console width; unattended output stays plain. Shortcut declarations grant
 location permissions, while defaults set initial answers. The additional command
 is always available today; its false default is a preference, not a permission.
 
@@ -181,3 +183,19 @@ publication. Frozen application build metadata makes package names repeatable,
 not a claim of byte-identical compiler output. Shim source changes require LLVM
 rebuilds and native acceptance; the shim rebuild CI job verifies generated hashes
 but does not currently compare rebuilt assets against committed bytes.
+
+## Plain Cursive presentation
+
+Cursive uses only its Crossterm backend, compiled into the executable without an
+ncurses or language-runtime dependency. Standard controls own editing, selection,
+checkboxes, focus, and Tab navigation. The existing resolver owns value precedence
+and validation; the form does not implement a competing installation contract.
+The engine reports operation phases and messages through a worker-scoped observer.
+A worker thread keeps the event loop responsive without adding an async runtime.
+
+Cancellation is cooperative before destination mutation. After the first write,
+installation/removal completes or preserves existing retry records on error.
+Late requests are reported honestly as completion. Backend cleanup precedes final
+console output; unattended/plain paths retain their existing behavior. The dialog
+scrolls at small sizes and preserves its fields behind a minimum-size message.
+Preferred sizes and theme YAML remain unimplemented.

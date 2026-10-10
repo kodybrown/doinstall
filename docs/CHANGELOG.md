@@ -39,3 +39,28 @@
   ambiguity, ZIP assembly bytes, and rejection before publication. The Windows
   example passed assembly, validation, install, command launch, and retained
   uninstall. Native Linux/macOS/Windows ARM64 acceptance remains pending.
+
+### 2026-10-09 Add a plain Cursive installer dialog
+
+- Use Cursive's standard dialog, background, and controls over the Crossterm
+  backend for interactive install/uninstall: choices, operation progress, and a
+  scrollable summary. Support typed YAML fields, Tab/Shift+Tab, dependent controls,
+  read-only CLI inputs, validation feedback, and resize-preserved values. No custom
+  themes, UI YAML fields, or shim changes. Keep `--plain` line prompts and existing
+  unattended behavior available.
+- Share input precedence with the existing resolver. Run filesystem work on one
+  worker thread, capture its diagnostics without writing over the active screen,
+  and restore terminal state before printing results. Stop cancellation at safe
+  pre-write checkpoints; complete already-started destination changes or retain
+  existing retry records on failure. Preserve receipt, ownership, immutable-build,
+  activation recovery, and uninstall contracts.
+- Add a disposable Windows hello UI preview with PATH locked off. Align checkout
+  guidance with the user-approved develop branch and document interaction,
+  cancellation, sizing, and native acceptance limits.
+- Verification: build.cmd build, build.cmd verify (64 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Nine UI tests cover event dispatch, dependencies, validation, size gating,
+  cancellation, ownership failures, and temporary-root install/uninstall. Native
+  Windows terminal acceptance covered choices/progress/summary, command launch,
+  retained uninstall, Ctrl+C cleanup, and the preview script. Resize behavior was
+  tested headlessly; native Linux/macOS/Windows ARM64 acceptance remains pending.
