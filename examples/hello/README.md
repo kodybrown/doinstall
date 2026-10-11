@@ -43,8 +43,9 @@ $target = (cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Js
 ```
 
 Tab/Shift+Tab moves between enabled controls; Space toggles a checkbox. Install
-shows progress and a summary, and Close returns to the script. Esc/Ctrl+C cancels
-choices or requests cancellation during work. Keep edited locations beneath the
+shows progress and a summary, and Close returns to the script. Esc/Ctrl+C asks before canceling
+choices or requesting cancellation during work. Choose Yes to cancel; No or Escape
+resumes the dialog. YAML `runtime.confirm-cancel: false` skips that confirmation. Keep edited locations beneath the
 printed temporary preview root. The PATH option is locked off, and the script
 removes its generated temporary directory after the dialog closes. It also runs
 uninstall when the application remains at its initial preview location.

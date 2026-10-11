@@ -54,6 +54,8 @@ struct State {
   fields: Vec<String>,
   derived_bin: bool,
   cancel: Arc<AtomicBool>,
+  interrupt: Arc<AtomicBool>,
+  confirming_cancel: bool,
   stage: Stage,
   messages: Vec<String>,
   outcome: Option<Result<()>>,
@@ -123,18 +125,13 @@ pub fn uninstall(root: PathBuf, package: Package, options: Options) -> Result<()
 fn run(action: Action, options: Options, values: BTreeMap<String, Value>) -> Result<()> {
   let mut siv = cursive::crossterm();
   setup(&mut siv, action, options, values);
-  let cancel = siv.user_data::<State>().unwrap().cancel.clone();
-  let _session = console::TuiSession::begin(cancel.clone());
+  // Signals request the same confirmation as keyboard/button cancellation;
+  // they must not reach the worker's cancellation flag before approval.
+  let interrupt = siv.user_data::<State>().unwrap().interrupt.clone();
+  let _session = console::TuiSession::begin(interrupt);
   // Polling also notices external Ctrl+C requests when no keyboard event arrives.
   siv.set_autorefresh(true);
-  siv.set_on_post_event(cursive::event::EventTrigger::any(), |s| {
-    if s
-      .user_data::<State>()
-      .is_some_and(|state| state.cancel.load(Ordering::SeqCst) && state.stage == Stage::Choices)
-    {
-      cancel_or_close(s);
-    }
-  });
+  siv.set_on_post_event(cursive::event::EventTrigger::any(), handle_interrupt);
   siv.try_run().map_err(|error| {
     // Backend initialization can fail after raw mode was enabled but before
     // Cursive owns a backend whose Drop would restore it.
@@ -175,13 +172,19 @@ fn setup(siv: &mut Cursive, action: Action, options: Options, values: BTreeMap<S
     fields: vec![],
     derived_bin,
     cancel: Arc::new(AtomicBool::new(false)),
+    interrupt: Arc::new(AtomicBool::new(false)),
+    confirming_cancel: false,
     stage: Stage::Choices,
     messages: vec![],
     outcome: None,
     worker: None,
   });
   siv.add_global_callback(Key::Esc, cancel_or_close);
-  siv.add_global_callback(Event::CtrlChar('c'), cancel_or_close);
+  // Cursive registrations append callbacks, including its default quit hook.
+  // Clear that hook before installing a priority handler so Ctrl+C cannot quit
+  // the event loop behind an otherwise visible cancellation confirmation.
+  siv.clear_global_callbacks(Event::CtrlChar('c'));
+  siv.set_on_pre_event(Event::CtrlChar('c'), cancel_or_close);
   choices(siv);
 }
 fn choices(siv: &mut Cursive) {
@@ -513,6 +516,13 @@ fn finished(siv: &mut Cursive, outcome: Result<()>) {
     format!("{result}\n\n{}", state.messages.join("\n\n"))
   };
   state.outcome = Some(outcome);
+  // The worker can finish while confirmation is open. Remove the modal before
+  // replacing progress, so a stale Yes cannot act on the completed operation.
+  let confirming = state.confirming_cancel;
+  state.confirming_cancel = false;
+  if confirming {
+    siv.pop_layer();
+  }
   siv.pop_layer();
   siv.add_layer(SizedDialog::new(
     Dialog::around(TextView::new(summary).scrollable())
@@ -520,7 +530,67 @@ fn finished(siv: &mut Cursive, outcome: Result<()>) {
       .button("Close", |s| s.quit()),
   ));
 }
+fn handle_interrupt(siv: &mut Cursive) {
+  if siv
+    .user_data::<State>()
+    .is_some_and(|state| state.interrupt.swap(false, Ordering::SeqCst))
+  {
+    cancel_or_close(siv);
+  }
+}
 fn cancel_or_close(siv: &mut Cursive) {
+  let state = siv.user_data::<State>().unwrap();
+  if state.stage == Stage::Summary {
+    siv.quit();
+    return;
+  }
+  if state.confirming_cancel {
+    // Esc/Ctrl+C dismisses the confirmation as No, never as implicit consent.
+    dismiss_cancel(siv);
+    return;
+  }
+  if state.cancel.load(Ordering::SeqCst) {
+    return;
+  }
+  if state.action.package().runtime.confirm_cancel {
+    state.confirming_cancel = true;
+    let action = if state.action.uninstall() {
+      "uninstallation"
+    } else {
+      "installation"
+    };
+    let question = if state.stage == Stage::Working {
+      format!(
+        "Request cancellation of {action}?\nAn operation that has begun changing destinations may still finish safely."
+      )
+    } else {
+      format!("Cancel {action}?")
+    };
+    // No is first and focused by default, so Enter preserves the operation.
+    // Keep this modal compact and usable below the form's minimum size, so
+    // the resize notice does not prevent the user from confirming cancellation.
+    siv.add_layer(
+      Dialog::text(question)
+        .title("Confirm cancellation")
+        .button("No", dismiss_cancel)
+        .button("Yes", confirm_cancel)
+        .with_name("cancel-confirmation"),
+    );
+  } else {
+    perform_cancel(siv);
+  }
+}
+fn dismiss_cancel(siv: &mut Cursive) {
+  if siv.user_data::<State>().unwrap().confirming_cancel {
+    siv.user_data::<State>().unwrap().confirming_cancel = false;
+    siv.pop_layer();
+  }
+}
+fn confirm_cancel(siv: &mut Cursive) {
+  dismiss_cancel(siv);
+  perform_cancel(siv);
+}
+fn perform_cancel(siv: &mut Cursive) {
   let state = siv.user_data::<State>().unwrap();
   match state.stage {
     Stage::Choices => {
@@ -722,6 +792,8 @@ mod tests {
     // First dismiss validation, then cancel the choices dialog.
     siv.pop_layer();
     siv.on_event(Event::Key(Key::Esc));
+    assert!(siv.user_data::<State>().unwrap().confirming_cancel);
+    confirm_cancel(&mut siv);
     assert!(siv
       .user_data::<State>()
       .unwrap()
@@ -906,5 +978,124 @@ mod tests {
       },
     )
     .unwrap();
+  }
+  #[test]
+  fn cancel_policy_defaults_to_true_and_false_survives_yaml_roundtrip() {
+    let (_temp, mut siv, _root) = fixture();
+    let package = siv.user_data::<State>().unwrap().action.package().clone();
+    assert!(package.runtime.confirm_cancel);
+    let mut value = serde_json::to_value(&package).unwrap();
+    assert!(value["runtime"].get("confirm-cancel").is_none());
+    value["runtime"]["confirm-cancel"] = false.into();
+    let package: Package = serde_json::from_value(value.clone()).unwrap();
+    let yaml = serde_saphyr::to_string(&package).unwrap();
+    assert!(yaml.contains("confirm-cancel: false"));
+    assert!(!serde_saphyr::from_str::<Package>(&yaml).unwrap().runtime.confirm_cancel);
+    value["runtime"]["confirm-cancel"] = "false".into();
+    assert!(serde_json::from_value::<Package>(value).is_err());
+  }
+  #[test]
+  fn escape_prompts_and_enter_defaults_to_no_without_losing_form_values() {
+    let (_temp, mut siv, root) = fixture();
+    let size = Arc::new(AtomicUsize::new(100));
+    let mut runner = siv.runner(backend(size.clone()));
+    runner.refresh();
+    let values = form_values(&mut runner);
+    runner.on_event(Event::Key(Key::Esc));
+    runner.refresh();
+    assert!(runner.user_data::<State>().unwrap().confirming_cancel);
+    assert!(runner.user_data::<State>().unwrap().outcome.is_none());
+    runner.on_event(Event::Key(Key::Enter));
+    assert!(!runner.user_data::<State>().unwrap().confirming_cancel);
+    assert_eq!(form_values(&mut runner), values);
+    runner.on_event(Event::CtrlChar('c'));
+    runner.refresh();
+    assert!(runner.is_running(), "Ctrl+C quit instead of waiting for confirmation");
+    assert!(runner.user_data::<State>().unwrap().confirming_cancel);
+    runner.on_event(Event::CtrlChar('c'));
+    assert!(runner.is_running());
+    assert!(!runner.user_data::<State>().unwrap().confirming_cancel);
+    assert!(runner.user_data::<State>().unwrap().outcome.is_none());
+    runner.on_event(Event::Key(Key::Esc));
+    runner.refresh();
+    runner.on_event(Event::Key(Key::Esc));
+    assert!(!runner.user_data::<State>().unwrap().confirming_cancel);
+    assert!(runner.user_data::<State>().unwrap().outcome.is_none());
+    runner.on_event(Event::Key(Key::Esc));
+    // Confirmation remains usable even when the underlying form cannot fit.
+    size.store(30, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    runner.on_event(Event::Key(Key::Tab));
+    runner.on_event(Event::Key(Key::Enter));
+    assert!(runner
+      .user_data::<State>()
+      .unwrap()
+      .outcome
+      .as_ref()
+      .unwrap()
+      .as_ref()
+      .unwrap_err()
+      .is::<console::Canceled>());
+    assert!(!root.exists());
+  }
+  #[test]
+  fn disabling_confirmation_cancels_buttons_escape_and_ctrl_c_immediately() {
+    for event in [Some(Event::Key(Key::Esc)), Some(Event::CtrlChar('c')), None] {
+      let (_temp, mut siv, root) = fixture();
+      if let Action::Install { package, .. } = &mut siv.user_data::<State>().unwrap().action {
+        package.runtime.confirm_cancel = false;
+      }
+      if let Some(event) = event {
+        siv.on_event(event);
+      } else {
+        cancel_or_close(&mut siv);
+      }
+      assert!(!siv.user_data::<State>().unwrap().confirming_cancel);
+      assert!(siv
+        .user_data::<State>()
+        .unwrap()
+        .outcome
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap_err()
+        .is::<console::Canceled>());
+      assert!(!root.exists());
+    }
+  }
+  #[test]
+  fn worker_completion_dismisses_pending_confirmation_and_close_does_not_prompt() {
+    let (_temp, mut siv, _root) = fixture();
+    siv.user_data::<State>().unwrap().stage = Stage::Working;
+    cancel_or_close(&mut siv);
+    assert!(siv.user_data::<State>().unwrap().confirming_cancel);
+    assert!(!siv.user_data::<State>().unwrap().cancel.load(Ordering::SeqCst));
+    assert_eq!(siv.screen().len(), 2);
+    finished(&mut siv, Ok(()));
+    assert_eq!(siv.screen().len(), 1);
+    assert_eq!(siv.user_data::<State>().unwrap().stage, Stage::Summary);
+    assert!(!siv.user_data::<State>().unwrap().confirming_cancel);
+    siv.on_event(Event::Key(Key::Esc));
+    assert!(siv.user_data::<State>().unwrap().outcome.as_ref().unwrap().is_ok());
+    assert_eq!(siv.screen().len(), 1);
+  }
+  #[test]
+  fn external_interrupts_request_confirmation_before_signaling_the_worker() {
+    let (_temp, mut siv, _root) = fixture();
+    let interrupt = siv.user_data::<State>().unwrap().interrupt.clone();
+    let _session = console::TuiSession::begin(interrupt);
+    siv.user_data::<State>().unwrap().stage = Stage::Working;
+    assert!(console::request_tui_cancel());
+    handle_interrupt(&mut siv);
+    assert!(siv.user_data::<State>().unwrap().confirming_cancel);
+    assert!(!siv.user_data::<State>().unwrap().cancel.load(Ordering::SeqCst));
+    dismiss_cancel(&mut siv);
+    handle_interrupt(&mut siv);
+    assert!(!siv.user_data::<State>().unwrap().confirming_cancel);
+    assert!(!siv.user_data::<State>().unwrap().cancel.load(Ordering::SeqCst));
+    cancel_or_close(&mut siv);
+    confirm_cancel(&mut siv);
+    assert!(siv.user_data::<State>().unwrap().cancel.load(Ordering::SeqCst));
   }
 }

@@ -42,6 +42,7 @@ architecture: x64
 payload: ./published
 runtime:
   interactive: true
+  confirm-cancel: true      # dialog cancellation confirmation; defaults to true
   commands:
     - name: example
       executable: example.exe
@@ -120,7 +121,7 @@ Interactive installation uses a standard Cursive dialog with three states:
 installation choices, operation progress, and a summary with a Close button.
 Uninstall uses the same flow, offering removal of declared settings unless a CLI
 settings flag already supplies the policy. The title, copyright, and description
-come from application metadata. No custom theme or UI YAML fields are supported.
+come from application metadata. No custom theme or sizing YAML fields are supported.
 
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
@@ -141,9 +142,17 @@ prints the application banner, Installation Settings, and Installation Summary
 width, including Unicode widths and narrow windows; unavailable width information
 falls back to 80 columns. Unattended output remains plain.
 
-In the dialog, Esc/Ctrl+C or Cancel stops before destination changes begin.
-During installation or removal, Cancel requests a stop at the next safe pre-write
-checkpoint. Once destination changes begin, the operation finishes rather than
+`runtime.confirm-cancel` is a boolean that defaults to true. In the interactive
+install/uninstall dialog, Cancel, Escape, or Ctrl+C asks for confirmation before
+canceling choices or requesting a stop during work. No is the default button;
+Enter, No, or Escape in that confirmation resumes the dialog without losing
+values. Set `confirm-cancel: false` to request cancellation immediately. Closing
+a completed summary never asks for cancellation confirmation. If work finishes
+while confirmation is open, its summary replaces that confirmation automatically.
+This option does not introduce prompts in unattended execution or change plain-mode
+Ctrl+C behavior. It is a runtime policy, not a `values` input or CLI flag.
+
+After confirmation, cancellation stops at the next safe pre-write checkpoint. Once destination changes begin, the operation finishes rather than
 abandoning a partially owned installation; failures retain the existing recovery
 records. A late cancellation is reported as a completed operation in the summary,
 not as an undo or rollback. Plain-mode Ctrl+C retains immediate interruption and

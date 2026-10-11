@@ -78,3 +78,24 @@
   passed after the change, covering expansion from 90 to 160 columns and shrinking
   back without losing values or cursor position. Native terminal resize and
   Linux/macOS/Windows ARM64 acceptance remain pending.
+
+### 2026-10-11 Confirm interactive cancellation by default
+
+- Add boolean YAML `runtime.confirm-cancel`, defaulting to true, for install and
+  uninstall dialogs. Cancel, Escape, and Ctrl+C ask before canceling choices or
+  signaling a working operation; No is focused by default. Enter/No/Escape resumes
+  the dialog with its values intact. False retains immediate cancellation requests.
+  Closing a summary does not prompt, and worker completion dismisses any pending
+  confirmation before showing its result.
+- Separate external interrupt requests from worker cancellation and replace
+  Cursive's priority Ctrl+C quit callback so confirmation cannot be bypassed.
+  Preserve safe pre-write cancellation, forward recovery, and unattended/plain
+  behavior. Omit the default policy from serialized YAML to retain existing
+  package content identity when the option is not customized.
+- Verification: build.cmd build, build.cmd verify (70 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Focused tests cover default/false YAML serialization, No/Yes/Escape/Ctrl+C,
+  disabled confirmation, external interrupts, and completion while a prompt is
+  open. Native Windows terminal acceptance checked cancellation confirmation
+  and terminal restoration using the temporary hello preview with PATH disabled.
+  Native Linux/macOS/Windows ARM64 acceptance remains pending.

@@ -19,6 +19,10 @@ pub struct Package {
 pub struct Runtime {
   #[serde(default = "interactive_default")]
   pub interactive: bool,
+  // Omit the default policy so adding the option does not rewrite existing
+  // package snapshots or change their content identity when it is unused.
+  #[serde(default = "interactive_default", skip_serializing_if = "cancel_confirmation_default")]
+  pub confirm_cancel: bool,
   #[serde(default)]
   pub inputs: BTreeMap<String, Input>,
   #[serde(default)]
@@ -33,6 +37,10 @@ pub struct Runtime {
   pub shortcuts: Vec<Shortcut>,
   #[serde(default)]
   pub settings: Vec<String>,
+}
+
+fn cancel_confirmation_default(value: &bool) -> bool {
+  *value
 }
 
 fn interactive_default() -> bool {

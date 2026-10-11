@@ -45,7 +45,8 @@ launcher runs the returned artifact. Doinstall does not depend on those adapters
 
 Install and uninstall use a plain Cursive dialog with standard controls and
 keyboard navigation when interactive execution is selected. Choices, progress,
-and summary occupy separate screens. `--plain` uses the original line prompts;
+and summary occupy separate screens. Cancel/Escape/Ctrl+C confirms by default;
+`runtime.confirm-cancel: false` skips the confirmation. `--plain` uses the original line prompts;
 `--non-interactive` keeps automation output plain. No theme configuration is added.
 Try the [temporary Windows UI preview](examples/hello/README.md#interactive-windows-preview).
 

@@ -50,7 +50,8 @@ maps project settings to that document explicitly; it does not make the installe
 depend on source-project configuration. Application name, optional copyright,
 and description own the dialog title/banner. Interactive execution uses Cursive's
 standard controls and appearance, with choices, operation progress, and summary
-states. No custom theme is implemented. `--plain` retains indented line prompts
+states. No custom theme is implemented. Runtime `confirm-cancel` defaults to true and
+asks before canceling choices or requesting cancellation during work. `--plain` retains indented line prompts
 and separators sized to the visible console width; unattended output stays plain. Shortcut declarations grant
 location permissions, while defaults set initial answers. The additional command
 is always available today; its false default is a preference, not a permission.
@@ -198,4 +199,8 @@ installation/removal completes or preserves existing retry records on error.
 Late requests are reported honestly as completion. Backend cleanup precedes final
 console output; unattended/plain paths retain their existing behavior. The dialog
 scrolls at small sizes and preserves its fields behind a minimum-size message.
-Preferred sizes and theme YAML remain unimplemented.
+Runtime `confirm-cancel` defaults to true. Confirmation is modal, defaults to No,
+and does not signal the worker before Yes. Keyboard and external Ctrl+C requests
+use the same policy. Completing work removes any pending confirmation and shows
+the result; closing a summary does not ask. Preferred sizes and theme YAML remain
+unimplemented.
