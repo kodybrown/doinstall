@@ -60,8 +60,8 @@ struct State {
   worker: Option<JoinHandle<Result<()>>>,
 }
 
-// Keep the standard dialog/control appearance. This wrapper only substitutes a
-// resize message when too small; it retains the actual view and all field values.
+// Keep the standard dialog/control appearance. Size to the current console,
+// retaining the actual view and field values behind the too-small notice.
 struct SizedDialog {
   view: BoxedView,
   fits: bool,
@@ -79,7 +79,12 @@ impl ViewWrapper for SizedDialog {
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
     self.fits = available.x >= 48 && available.y >= 12;
     if self.fits {
-      Vec2::min(self.view.required_size(Vec2::min(available, Vec2::new(72, 30))), available)
+      // Fill the usable width so full-width EditViews grow on maximize. Keep
+      // a small outer margin and use only the height the content needs; tall
+      // forms may expand while short progress/summary dialogs remain compact.
+      let usable = Vec2::new(available.x.saturating_sub(4).max(48), available.y.saturating_sub(2).max(12));
+      let content = self.view.required_size(usable);
+      Vec2::new(usable.x, content.y.min(usable.y))
     } else {
       available
     }
@@ -631,6 +636,49 @@ mod tests {
     assert!(!runner
       .call_on_name("enabled-bin-dir", |v: &mut EnableableView<BoxedView>| v.is_enabled())
       .unwrap());
+  }
+  #[test]
+  fn console_growth_expands_rendered_text_fields_and_shrinking_preserves_edits() {
+    let (_temp, mut siv, _root) = fixture();
+    let size = Arc::new(AtomicUsize::new(90));
+    let output = Arc::new(std::sync::Mutex::new(String::new()));
+    let mut runner = siv.runner(Box::new(Headless {
+      size: size.clone(),
+      dummy: Dummy,
+      output: output.clone(),
+    }));
+    runner.refresh();
+    runner.focus_name("install-dir").unwrap();
+    runner.on_event(Event::Key(Key::Left));
+    let cursor = runner
+      .call_on_name("install-dir", |view: &mut EditView| view.get_cursor())
+      .unwrap();
+    let values = form_values(&mut runner);
+    let narrow_fill = output.lock().unwrap().chars().filter(|c| *c == '_').count();
+    output.lock().unwrap().clear();
+    size.store(160, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    let wide_fill = output.lock().unwrap().chars().filter(|c| *c == '_').count();
+    // Standard EditView fillers prove that the actual controls, not just their
+    // enclosing border, gained usable columns after the resize event.
+    assert!(
+      wide_fill > narrow_fill + 70,
+      "Fields did not expand: narrow={narrow_fill}, wide={wide_fill}"
+    );
+    assert_eq!(form_values(&mut runner), values);
+    assert_eq!(
+      runner
+        .call_on_name("install-dir", |view: &mut EditView| view.get_cursor())
+        .unwrap(),
+      cursor
+    );
+    output.lock().unwrap().clear();
+    size.store(90, Ordering::SeqCst);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    assert_eq!(form_values(&mut runner), values);
+    assert_eq!(output.lock().unwrap().chars().filter(|c| *c == '_').count(), narrow_fill);
   }
   #[test]
   fn location_changes_derive_bin_until_user_edits_it_and_resize_preserves_values() {

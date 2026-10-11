@@ -125,8 +125,10 @@ come from application metadata. No custom theme or UI YAML fields are supported.
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
 retaining their values. Invalid inputs keep the choices screen open with a
-validation diagnostic. Configuration and result bodies scroll when space is
-limited. Below the minimum usable area (approximately 50 columns by 14 rows,
+validation diagnostic. The dialog grows horizontally with the console, leaving
+a small outer margin; text fields use the additional width. Height follows the
+content up to the available space. Configuration and result bodies scroll when
+space is limited. Below the minimum usable area (approximately 50 columns by 14 rows,
 including dialog margins), a resize message replaces the view without losing
 field values. Resizing during work does not suspend filesystem operations.
 Progress names the current operation; no overall percentage is claimed. Summary

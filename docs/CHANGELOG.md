@@ -64,3 +64,17 @@
   Windows terminal acceptance covered choices/progress/summary, command launch,
   retained uninstall, Ctrl+C cleanup, and the preview script. Resize behavior was
   tested headlessly; native Linux/macOS/Windows ARM64 acceptance remains pending.
+
+### 2026-10-11 Grow installer dialogs with the console
+
+- Remove the fixed 72-column dialog limit. Forms now fill the console's usable
+  width with a small margin, giving editable paths more space when the terminal
+  grows or is maximized. Height follows content up to the available space;
+  shorter progress and summary screens remain compact. Retain scrolling,
+  minimum-size gating, field values, and cursor position across resizes.
+- Verification: build.cmd build and build.cmd verify passed 65 Rust tests,
+  formatting, clippy, shim integrity/PE checks, and git diff --check on Windows
+  x64. A rendered-control resize regression failed against the previous cap and
+  passed after the change, covering expansion from 90 to 160 columns and shrinking
+  back without losing values or cursor position. Native terminal resize and
+  Linux/macOS/Windows ARM64 acceptance remain pending.
