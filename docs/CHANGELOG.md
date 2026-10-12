@@ -99,3 +99,23 @@
   open. Native Windows terminal acceptance checked cancellation confirmation
   and terminal restoration using the temporary hello preview with PATH disabled.
   Native Linux/macOS/Windows ARM64 acceptance remains pending.
+
+### 2026-10-12 Deliver prebuilt tools with a declarative dotask adapter
+
+- Add optional `adapters/dotask/assemble.task`, invoking the builder directly
+  through dotask's process-step format with explicit builder, installer, config,
+  and fresh output paths. Document consumer installation, target defaults, and
+  resolved YAML/payload requirements. Keep producer steps and typed
+  InstallerArtifact integration in the caller's existing adapters.
+- Stage a Windows x64 tool bundle with both release executables, the task,
+  documentation, and license. DoInstall's build/runtime retain no dotask or .NET
+  dependency. The older installed dotask does not understand process-task options;
+  verification used the current source CLI without changing the active install
+  or PATH, and documents the required direct-process support.
+- Verification: build.cmd build and build.cmd verify passed 70 Rust tests,
+  formatting, clippy, shim integrity/PE checks, and git diff --check. Native
+  Windows x64 acceptance invoked the .task using project defaults and paths with
+  spaces/Unicode, assembled and validated a package, installed and launched a
+  temporary command, uninstalled, and refused an existing output without changing
+  it. Staged executable hashes matched evaluated external Cargo release outputs.
+  Native Linux/macOS/Windows ARM64 acceptance remains pending.

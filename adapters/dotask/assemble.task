@@ -1,0 +1,17 @@
+# Optional consumer adapter: neither DoInstall executable reads dotask settings.
+description: Assemble an installer from resolved YAML and an already-built payload.
+options:
+  - {name: builder, type: path, required: true, description: Path to doinstall-builder for this host.}
+  - {name: installer, type: path, required: true, description: Path to the matching doinstall executable.}
+  - {name: config, type: path, required: true, description: Resolved installer YAML including platform and payload.}
+  - {name: output, type: path, required: true, description: Fresh complete installer output directory.}
+steps:
+  - exec:
+      executable: {parameter: builder}
+      arguments:
+        - --installer
+        - {parameter: installer}
+        - --config
+        - {parameter: config}
+        - --output
+        - {parameter: output}
