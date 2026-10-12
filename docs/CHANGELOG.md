@@ -119,3 +119,16 @@
   temporary command, uninstalled, and refused an existing output without changing
   it. Staged executable hashes matched evaluated external Cargo release outputs.
   Native Linux/macOS/Windows ARM64 acceptance remains pending.
+
+### 2026-10-12 Keep build-system adapters with their consuming tool
+
+- Remove the optional dotask task and its adapter-specific documentation from
+  this repository. Dotask now owns its optional shared task, distribution,
+  configuration, and updates, like its other external-utility adapters. Doinstall
+  remains a separately supplied runtime/builder pair with an ordinary CLI; it
+  never installs project task files or depends on dotask.
+- Preserve all executable, YAML, package, receipt, and activation behavior.
+  Verification: build.cmd build, build.cmd verify (70 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Native Linux/macOS/Windows ARM64 acceptance remains pending. No active
+  installation, publication or push occurred.

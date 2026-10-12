@@ -37,12 +37,11 @@ tool; distribute only the resulting directory (`installer[.exe]`,
 Try the [runnable standalone hello example](examples/hello/README.md), which
 assembles, validates, installs, runs, and uninstalls entirely under temporary roots.
 
-An optional [declarative dotask adapter](adapters/dotask/README.md) invokes the
-prebuilt builder through `.task` process steps without compiling a code task.
-
-Applications can select any build system. Dotask's optional `_/doinstall/*`
-adapters invoke these ordinary tools and its generic `_/installer/install`
-launcher runs the returned artifact. Doinstall does not depend on those adapters.
+Applications can select any build system. Integration task files belong to that
+build system, which invokes these ordinary command-line tools. Install the tools
+separately; doinstall does not discover projects, install build-system adapters,
+or manage their configuration and updates. Keep the matching runtime and builder
+from the same build together on the build machine.
 
 ## Interactive installer
 
