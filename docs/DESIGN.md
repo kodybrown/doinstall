@@ -227,3 +227,10 @@ The wrapper refuses typed newlines, preserves Tab navigation, and limits height
 to four rows with cursor-following scrolling. Editing invalidates layout so fields
 can grow or shrink with their content. Progress remains phase text, and summary
 text wraps inside the scrolling body. No spinner, progress bar or percent is added.
+
+The PATH checkbox distinguishes membership from requested changes. When the
+selected application/command directory is already on persistent PATH, it displays
+checked and disabled with a reason. A separate remembered choice supplies form
+values and is restored when the candidate changes to a directory outside PATH.
+CLI locks remain authoritative and explained, so a presentation checkmark cannot
+turn a no-PATH-write override into consent. Membership checks are read-only.

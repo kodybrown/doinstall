@@ -356,3 +356,110 @@ fn tab_skips_disabled_fields_and_cli_locked_checkboxes() {
   runner.on_event(Event::Char(' '));
   assert!(runner.focus_name("bin-dir").is_ok());
 }
+
+#[cfg(windows)]
+#[test]
+fn existing_path_is_checked_locked_and_restores_the_users_choice() {
+  for choice in [false, true] {
+    let (_temp, mut siv, root) = fixture();
+    let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 48))));
+    let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+    runner.refresh();
+    runner.call_on_name("add-to-path", |view: &mut Checkbox| {
+      let _ = view.set_checked(choice);
+    });
+    // Inject read-only membership results instead of editing the user's PATH.
+    refresh_dependencies_with_path_check(&mut runner, |directory| {
+      assert_eq!(directory, root);
+      Ok(true)
+    });
+    refresh_dependencies_with_path_check(&mut runner, |_| Ok(true));
+    runner.refresh();
+    let state = runner
+      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .unwrap();
+    assert_eq!(state, (true, false));
+    assert_eq!(
+      form_values(&mut runner)["add-to-path"],
+      choice,
+      "Showing membership must not create consent for a PATH write"
+    );
+    {
+      let screen = screen.lock().unwrap();
+      screen.find("[X] Add this directory");
+      screen.find("already on PATH");
+      screen.find("checked and disabled");
+      screen.snapshot("already-on-path");
+    }
+    // Changing the application directory rechecks membership and restores the
+    // remembered choice; repeated refreshes above must not overwrite it.
+    let changed_root = root.with_file_name("other-application");
+    runner.call_on_name("install-dir", |view: &mut WrappedInput| {
+      let _ = view.set_content(changed_root.to_string_lossy());
+    });
+    refresh_dependencies_with_path_check(&mut runner, |directory| {
+      assert_eq!(directory, changed_root);
+      Ok(false)
+    });
+    assert_eq!(
+      runner
+        .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+        .unwrap(),
+      (choice, true)
+    );
+    assert_eq!(form_values(&mut runner)["add-to-path"], choice);
+    assert!(!root.exists());
+  }
+}
+
+#[cfg(windows)]
+#[test]
+fn cli_path_lock_remains_explained_and_safe_when_membership_changes() {
+  let (_temp, mut siv, root) = fixture();
+  let package = siv.user_data::<State>().unwrap().action.package().clone();
+  let options = Options {
+    values: BTreeMap::from([("add-to-path".into(), false.into())]),
+    ..Options::default()
+  };
+  let values = config::default_values(&package, &options).unwrap();
+  siv.pop_layer();
+  setup(
+    &mut siv,
+    Action::Install {
+      config: PathBuf::from("unused"),
+      package,
+    },
+    options,
+    values,
+  );
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 48))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  screen.lock().unwrap().find("locked by the command-line setting");
+  refresh_dependencies_with_path_check(&mut runner, |_| Ok(true));
+  assert_eq!(
+    runner
+      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .unwrap(),
+    (true, false)
+  );
+  assert_eq!(form_values(&mut runner)["add-to-path"], false);
+  // With an additional command selected, its directory is the PATH candidate.
+  runner.call_on_name("additional-command", |view: &mut Checkbox| {
+    let _ = view.set_checked(true);
+  });
+  refresh_dependencies_with_path_check(&mut runner, |directory| {
+    assert_eq!(directory, root.parent().unwrap());
+    Ok(false)
+  });
+  runner.refresh();
+  assert_eq!(
+    runner
+      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .unwrap(),
+    (false, false)
+  );
+  assert_eq!(form_values(&mut runner)["add-to-path"], false);
+  screen.lock().unwrap().find("locked by the command-line setting");
+  assert!(!root.exists());
+}

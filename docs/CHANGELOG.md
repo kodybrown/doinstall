@@ -187,3 +187,21 @@
   checking color rendering, navigation, installation/summary, cancellation,
   terminal restoration, and cleanup. Native Linux/macOS/Windows ARM64 acceptance
   remains pending. No active installation changes, integration, push, or publication.
+
+### 2026-10-13 Explain and lock existing PATH membership in the form
+
+- Show the PATH checkbox checked and disabled when the selected application or
+  additional command directory is already on persistent user/system PATH. Explain
+  why no PATH change is needed and restore the previous choice when the candidate
+  moves outside PATH. Keep displayed membership separate from the submitted
+  request so CLI no-PATH-write overrides remain authoritative.
+- Explain CLI-locked PATH options, including the temporary hello preview's
+  deliberate `--set add-to-path=false`. Preserve ownership, plain/unattended
+  behavior, and the read-only PATH membership query.
+- Verification: release build, build.cmd verify (78 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Cursive cell/event regressions cover checked/disabled membership, its visible
+  explanation, repeated refreshes, remembered true/false choices, directory
+  changes, additional-command selection, and CLI locks. Membership results are
+  injected without changing real PATH or active installations; native acceptance
+  of this specific membership transition remains pending.

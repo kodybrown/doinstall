@@ -57,6 +57,9 @@ struct State {
   values: BTreeMap<String, Value>,
   fields: Vec<String>,
   derived_bin: bool,
+  // A checked PATH box can describe existing membership rather than consent
+  // to change PATH. Keep the user's choice separately while it is locked.
+  path_choice: Option<bool>,
   cancel: Arc<AtomicBool>,
   interrupt: Arc<AtomicBool>,
   confirming_cancel: bool,
@@ -182,6 +185,7 @@ fn setup(siv: &mut Cursive, action: Action, options: Options, values: BTreeMap<S
     values,
     fields: vec![],
     derived_bin,
+    path_choice: None,
     cancel: Arc::new(AtomicBool::new(false)),
     interrupt: Arc::new(AtomicBool::new(false)),
     confirming_cancel: false,
@@ -386,8 +390,10 @@ fn form_values(siv: &mut Cursive) -> BTreeMap<String, Value> {
   let mut values = state.values.clone();
   let fields = state.fields.clone();
   let inputs = state.inputs.clone();
+  let path_choice = state.path_choice;
   for name in fields {
     let value = match inputs[&name].kind.as_str() {
+      "boolean" if name == "add-to-path" && path_choice.is_some() => path_choice.map(Value::Bool),
       "boolean" => siv.call_on_name(&name, |view: &mut Checkbox| Value::Bool(view.is_checked())),
       "choice" => siv.call_on_name(&name, |view: &mut SelectView<String>| {
         Value::String(view.selection().map(|v| (*v).clone()).unwrap_or_default())
@@ -401,6 +407,9 @@ fn form_values(siv: &mut Cursive) -> BTreeMap<String, Value> {
   values
 }
 fn refresh_dependencies(siv: &mut Cursive) {
+  refresh_dependencies_with_path_check(siv, user_path::contains);
+}
+fn refresh_dependencies_with_path_check(siv: &mut Cursive, check_path: impl FnOnce(&std::path::Path) -> Result<bool>) {
   let state = siv.user_data::<State>().unwrap();
   if state.action.uninstall() || state.stage != Stage::Choices {
     return;
@@ -420,8 +429,26 @@ fn refresh_dependencies(siv: &mut Cursive) {
     });
     values.insert("bin-dir".into(), suggested.into());
   }
+  let directory = config::command_directory(&values);
+  let path_presence = match &directory {
+    Ok(directory) if cfg!(windows) => Some(check_path(directory)),
+    _ => None,
+  };
+  let already_on_path = matches!(&path_presence, Some(Ok(true)));
+  if already_on_path {
+    siv.user_data::<State>().unwrap().path_choice = Some(config::enabled(&values, "add-to-path"));
+    siv.call_on_name("add-to-path", |view: &mut Checkbox| {
+      // Ignore the callback: this is a presentation update, not a user edit.
+      let _ = view.set_checked(true);
+    });
+  } else if let Some(choice) = siv.user_data::<State>().unwrap().path_choice.take() {
+    siv.call_on_name("add-to-path", |view: &mut Checkbox| {
+      let _ = view.set_checked(choice);
+    });
+  }
   for name in fields {
     let allowed = match name.as_str() {
+      "add-to-path" => !already_on_path,
       "bin-dir" => config::enabled(&values, "additional-command"),
       "desktop-dir" => config::enabled(&values, "desktop-shortcuts"),
       "start-menu-dir" | "start-menu-nested" => config::enabled(&values, "start-menu-shortcuts"),
@@ -459,18 +486,19 @@ fn refresh_dependencies(siv: &mut Cursive) {
       });
     }
   }
-  let status = match config::command_directory(&values) {
-    Ok(directory) if cfg!(windows) => match user_path::contains(&directory) {
-      Ok(true) => "Selected command directory is already on PATH.".into(),
-      Ok(false) if config::enabled(&values, "add-to-path") => {
+  let mut status = match path_presence {
+      Some(Ok(true)) => "Selected command directory is already on PATH.\nThis option is checked and disabled because no PATH change is needed.".to_owned(),
+      Some(Ok(false)) if config::enabled(&values, "add-to-path") => {
         "Selected command directory will be added to user PATH.".into()
       }
-      Ok(false) => "Selected command directory will not be added to PATH.".into(),
-      Err(error) => format!("Cannot check PATH: {error:#}"),
-    },
-    Ok(_) => "Add the selected command directory to your shell PATH manually.".into(),
-    Err(_) => "Enter an absolute installation and command directory.".into(),
+      Some(Ok(false)) => "Selected command directory will not be added to PATH.".into(),
+      Some(Err(error)) => format!("Cannot check PATH: {error:#}"),
+      None if directory.is_ok() => "Add the selected command directory to your shell PATH manually.".into(),
+      None => "Enter an absolute installation and command directory.".into(),
   };
+  if cfg!(windows) && !already_on_path && options.values.contains_key("add-to-path") {
+    status.push_str("\nThis option is locked by the command-line setting.");
+  }
   siv.call_on_name("path-status", |view: &mut TextView| view.set_content(status));
 }
 fn start(siv: &mut Cursive) {

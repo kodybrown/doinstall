@@ -194,7 +194,13 @@ including interactive changes, unless YAML or `--bin-dir` supplies another path.
 If no additional command is selected, the application directory is the PATH
 candidate. A directory already on persistent user/system PATH produces an
 informational message and skips the registry write (and the plain-mode PATH
-question). The dialog's Install button confirms the selected settings. In plain
+question). In the form, its PATH checkbox is checked and disabled, with an
+explanation that no PATH change is needed. This checkmark represents existing
+membership, not a new request to modify PATH. Changing to a directory outside
+PATH restores the previous choice unless a CLI override locks it. A CLI-locked
+PATH option explains that restriction as well; the hello preview deliberately
+uses `--set add-to-path=false` to prevent PATH writes.
+The dialog's Install button confirms the selected settings. In plain
 mode, a final location summary precedes confirmation; boolean answers accept Y/N,
 yes/no, and true/false, and Enter accepts the shown default. Ctrl+C, end of input, or
 declining plain-mode confirmation prints `Canceled` and exits 130. Cancellation
