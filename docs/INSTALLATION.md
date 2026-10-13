@@ -3,7 +3,8 @@
 Doinstall's builder accepts resolved application metadata, payload location, and
 nested `runtime` settings. Producer tasks, gathers, archive creation, and version
 policy are responsibilities of the chosen build system, not the destination
-installer. Doinstall does not read dotask settings or execute task files.
+installer. Doinstall does not parse dotask settings or task files. It can launch
+pinned included tools through [runtime lifecycle actions](INCLUDED-TOOLS.md).
 
 Run the build-machine tool with explicit installer, config, and output paths:
 
@@ -149,14 +150,15 @@ Enter, No, or Escape in that confirmation resumes the dialog without losing
 values. Set `confirm-cancel: false` to request cancellation immediately. Closing
 a completed summary never asks for cancellation confirmation. If work finishes
 while confirmation is open, its summary replaces that confirmation automatically.
-This option does not introduce prompts in unattended execution or change plain-mode
+This option does not introduce prompts in unattended execution or change the plain-mode UI
 Ctrl+C behavior. It is a runtime policy, not a `values` input or CLI flag.
 
 After confirmation, cancellation stops at the next safe pre-write checkpoint. Once destination changes begin, the operation finishes rather than
 abandoning a partially owned installation; failures retain the existing recovery
 records. A late cancellation is reported as a completed operation in the summary,
 not as an undo or rollback. Plain-mode Ctrl+C retains immediate interruption and
-its existing journal/retry behavior.
+its existing journal/retry behavior. During an included tool, plain cancellation
+first stops the owned process tree and saves its workflow recovery state.
 
 The install prompts ask for the complete application directory, an optional
 additional command (default No), its directory when enabled, and on Windows

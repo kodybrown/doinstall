@@ -132,3 +132,30 @@
   clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
   Native Linux/macOS/Windows ARM64 acceptance remains pending. No active
   installation, publication or push occurred.
+
+### 2026-10-13 Included-tool lifecycle and destination gates
+
+- Launch pinned tools bundled in immutable payloads through prepare,
+  before-activate, and after-activate phases. Provide a temporary structured
+  context, exact argv/env tokens, process-tree timeout/cancellation cleanup, and
+  non-interactive execution without a dotask/source/toolchain dependency.
+- Gate destination platform/architecture, explicit Debian/Ubuntu versions, and
+  optional root/systemd requirements before installation writes. Separate builder
+  validation from destination checks and verify the supplied engine's native
+  format/architecture without executing it.
+- Carry Unix executable modes and empty directories in ZIPs assembled on Windows,
+  use destination engine filenames, and preserve repeated named-package reuse.
+- Refuse adoption of unowned external configuration, verify owned hashes/modes,
+  retain restricted configuration snapshots and workflow journals, and stop before
+  successful receipt finalization/pruning on failed hooks. Original-package/input
+  retries remain explicit; automatic rollback and service cleanup are deferred.
+- Resolve the development helper's checkout at runtime so shared cached Cargo
+  artifacts cannot redirect verification into another worktree. Refresh only its
+  integrity fingerprint after verifying unchanged shim source/assets.
+- Verification: build.cmd verify passed all 82 Rust tests, formatting, clippy,
+  shim integrity/PE checks, and git diff --check in this develop checkout on
+  Windows x64. Ten new native fixtures cover tool execution, failure/retry phases,
+  guarded config ownership, timeout descendant cleanup, input preflight, and Linux
+  ZIP assembly without running the destination engine. Cargo output remains
+  C:/tmp/_rust/doinstall/target. Native Debian/Ubuntu/macOS/ARM64 acceptance remains
+  pending; fixtures use disposable directories and do not provision live servers.

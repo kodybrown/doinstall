@@ -1,6 +1,6 @@
 use crate::{
   config,
-  engine::{engine_name, fingerprint, identity, lock, verify_entries},
+  engine::{engine_name_for, fingerprint, identity, lock, verify_entries},
   files,
   model::*,
 };
@@ -20,6 +20,8 @@ pub fn package(
   let mut package: Package = files::read_yaml(config_file)?;
   config::validate(&package)?;
   ensure!(installer.is_file(), "Installer executable not found: {}", installer.display());
+  crate::binary::validate(installer, &package.platform, &package.architecture)?;
+  let engine_name = engine_name_for(&package.platform);
   let payload = files::absolute(Path::new(&package.payload), config_file.parent().unwrap())?;
   ensure!(
     !files::overlaps(destination, &payload),
@@ -47,11 +49,12 @@ pub fn package(
       dirty: false,
     });
   }
-  let directory_payload = payload.is_dir();
+  let cross_unix = package.platform != "windows" && config::platform() != package.platform;
+  let directory_payload = payload.is_dir() && !cross_unix;
   let temporary = files::temporary()?;
   let staged_payload = temporary.path().join("payload");
   fs::create_dir(&staged_payload)?;
-  if directory_payload {
+  if payload.is_dir() {
     let inventory = files::inventory(&payload)?;
     files::copy_payload(&payload, &staged_payload, &inventory)?;
   } else {
@@ -61,7 +64,23 @@ pub fn package(
     files::extract(&archive, &staged_payload)?;
   }
   verify_entries(&package, &staged_payload)?;
-  let inventory = files::inventory(&staged_payload)?;
+  let mut inventory = files::inventory(&staged_payload)?;
+  if cross_unix {
+    // Carry target modes in a ZIP when the builder cannot represent them.
+    target_modes(
+      &package,
+      &mut inventory,
+      (!payload.is_dir()).then(|| temporary.path().join("payload.zip")).as_deref(),
+    )?;
+    let archive = temporary.path().join("unix-payload.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&archive)?);
+    zip_directories(&mut zip, &staged_payload, &staged_payload)?;
+    for (name, record) in &inventory {
+      zip.start_file(name, zip::write::SimpleFileOptions::default().unix_permissions(record.mode))?;
+      std::io::copy(&mut fs::File::open(staged_payload.join(name))?, &mut zip)?;
+    }
+    zip.finish()?;
+  }
   ensure!(!inventory.is_empty(), "Payload is empty");
   let identity = identity(&package, &inventory)?;
   let output = if named {
@@ -90,20 +109,27 @@ pub fn package(
     let existing: Package = files::read_yaml(&output.join("installer.yaml"))?;
     let existing_payload = files::absolute(Path::new(&existing.payload), &output)?;
     let existing_temporary = files::temporary()?;
-    let existing_inventory = if existing_payload.is_dir() {
+    let mut existing_inventory = if existing_payload.is_dir() {
       files::inventory(&existing_payload)?
     } else {
       files::extract(&existing_payload, existing_temporary.path())?;
       files::inventory(existing_temporary.path())?
     };
+    if cross_unix {
+      target_modes(
+        &existing,
+        &mut existing_inventory,
+        (!existing_payload.is_dir()).then_some(existing_payload.as_path()),
+      )?;
+    }
     ensure!(
       fingerprint(&existing, &existing_inventory)? == fingerprint(&package, &inventory)?
-        && files::file_hash(&output.join(engine_name()))? == files::file_hash(installer)?,
+        && files::file_hash(&output.join(engine_name))? == files::file_hash(installer)?,
       "Package name already belongs to different contents: {}. Rebuild the application with a new build stamp.",
       output.display()
     );
-    println!("Reused installer: {}", output.join(engine_name()).display());
-    return Ok(output.join(engine_name()));
+    println!("Reused installer: {}", output.join(engine_name).display());
+    return Ok(output.join(engine_name));
   }
   // Publish a complete independent copy by renaming a sibling staging directory.
   files::safe_path(&output)?;
@@ -117,12 +143,72 @@ pub fn package(
     files::copy_payload(&staged_payload, &target, &files::inventory(&staged_payload)?)?;
     package.payload = "payload".into();
   } else {
-    fs::copy(temporary.path().join("payload.zip"), final_stage.path().join("payload.zip"))?;
+    let archive = temporary.path().join(if cross_unix {
+      "unix-payload.zip"
+    } else {
+      "payload.zip"
+    });
+    fs::copy(archive, final_stage.path().join("payload.zip"))?;
     package.payload = "payload.zip".into();
   }
-  fs::copy(installer, final_stage.path().join(engine_name()))?;
+  fs::copy(installer, final_stage.path().join(engine_name))?;
   files::write_yaml(&final_stage.path().join("installer.yaml"), &package)?;
   fs::rename(final_stage.path(), &output)?;
-  println!("Created installer: {}", output.join(engine_name()).display());
-  Ok(output.join(engine_name()))
+  println!("Created installer: {}", output.join(engine_name).display());
+  Ok(output.join(engine_name))
+}
+
+fn target_modes(
+  package: &Package,
+  inventory: &mut std::collections::BTreeMap<String, FileRecord>,
+  archive: Option<&Path>,
+) -> Result<()> {
+  let executable = package
+    .runtime
+    .commands
+    .iter()
+    .map(|c| c.executable.as_str())
+    .chain(package.runtime.shortcuts.iter().map(|s| s.executable.as_str()))
+    .chain(package.runtime.tools.values().map(|t| t.executable.as_str()))
+    .collect::<std::collections::BTreeSet<_>>();
+  let mut modes = std::collections::BTreeMap::new();
+  if let Some(archive) = archive {
+    let mut zip = zip::ZipArchive::new(fs::File::open(archive)?)?;
+    for index in 0..zip.len() {
+      let entry = zip.by_index(index)?;
+      if let Some(mode) = entry.unix_mode()
+        && mode & 0o777 != 0
+      {
+        modes.insert(entry.name().to_owned(), mode & 0o777);
+      }
+    }
+  }
+  for (name, record) in inventory {
+    record.mode = modes.get(name).copied().unwrap_or(if executable.contains(name.as_str()) {
+      0o755
+    } else {
+      0o644
+    });
+    ensure!(
+      !executable.contains(name.as_str()) || record.mode & 0o111 != 0,
+      "Declared entry/tool is not executable in payload ZIP: {name}"
+    );
+  }
+  Ok(())
+}
+fn zip_directories(zip: &mut zip::ZipWriter<fs::File>, root: &Path, current: &Path) -> Result<()> {
+  for item in fs::read_dir(current)? {
+    let path = item?.path();
+    if path.is_dir() {
+      let name = path
+        .strip_prefix(root)?
+        .to_str()
+        .context("Non UTF-8 payload directory")?
+        .replace('\\', "/")
+        + "/";
+      zip.add_directory(name, zip::write::SimpleFileOptions::default().unix_permissions(0o755))?;
+      zip_directories(zip, root, &path)?;
+    }
+  }
+  Ok(())
 }

@@ -179,16 +179,18 @@ pub fn validate(package: &Package) -> Result<()> {
   }
   ensure!(!package.application.name.trim().is_empty(), "application.name is required");
   ensure!(
-    package.platform == platform() && package.architecture == architecture(),
-    "Package targets {}-{}; engine is {}-{}",
-    package.platform,
-    package.architecture,
-    platform(),
-    architecture()
+    ["windows", "linux", "macos"].contains(&package.platform.as_str()),
+    "Unsupported target platform."
   );
   ensure!(
-    !package.runtime.commands.is_empty() || !package.runtime.shortcuts.is_empty(),
-    "At least one command or shortcut is required"
+    ["x64", "arm64"].contains(&package.architecture.as_str()),
+    "Unsupported target architecture."
+  );
+  ensure!(
+    !package.runtime.commands.is_empty()
+      || !package.runtime.shortcuts.is_empty()
+      || !package.runtime.lifecycle.is_empty(),
+    "At least one command, shortcut, or lifecycle action is required"
   );
   for command in &package.runtime.commands {
     files::name(&command.name)?;
@@ -214,6 +216,7 @@ pub fn validate(package: &Package) -> Result<()> {
       files::relative(dir)?;
     }
   }
+  crate::workflow::validate(package)?;
   Ok(())
 }
 pub fn standard_inputs() -> BTreeMap<String, Input> {

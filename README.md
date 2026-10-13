@@ -32,7 +32,9 @@ doinstall-builder --installer /tools/doinstall --config /project/installer.yaml 
 On Windows pass the corresponding `.exe` paths. The builder is a build-machine
 tool; distribute only the resulting directory (`installer[.exe]`,
 `installer.yaml`, and payload). The installer never runs producer tasks or reads
-`.dotasks.yaml`. See [the configuration and ownership contract](docs/INSTALLATION.md).
+.dotasks.yaml. It can launch pinned tools bundled in its payload through
+[runtime lifecycle actions](docs/INCLUDED-TOOLS.md). See
+[the configuration and ownership contract](docs/INSTALLATION.md).
 
 Try the [runnable standalone hello example](examples/hello/README.md), which
 assembles, validates, installs, runs, and uninstalls entirely under temporary roots.

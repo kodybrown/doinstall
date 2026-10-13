@@ -15,9 +15,13 @@ The implemented interface and native acceptance limits are documented in
   their task management and project acceptance belong to dotask.
 - Use a generic Rust installer, without an Inno Setup dependency or Windows
   Installed Apps integration. Retain the existing bundled Windows command shims;
-  consumers do not rebuild them. The installer must support automated uninstall.
+  consumers do not rebuild them. Ordinary application installations support
+  automated uninstall; lifecycle-managed services require an explicit cleanup workflow.
 - Distribute a platform/architecture-specific executable, same-basename YAML,
-  and a payload directory or ZIP. YAML carries application metadata, version,
+  and a payload directory or ZIP. Optional pinned included tools run through
+  [lifecycle actions](INCLUDED-TOOLS.md), with destination gates, owned-config
+  snapshots, and failure journals. Server cleanup and automatic rollback are deferred.
+  YAML carries application metadata, version,
   inputs, defaults, and installation instructions. Resolve payload paths relative
   to the YAML. No dotask or language toolchain is required on the destination.
 - `doinstall-builder` assembles a package without installing. Its optional JSON

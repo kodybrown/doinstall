@@ -3,10 +3,13 @@ mod config;
 mod console;
 mod engine;
 mod files;
+mod host;
+mod included_process;
 mod launchers;
 mod model;
 mod tui;
 mod user_path;
+mod workflow;
 
 use anyhow::{ensure, Context, Result};
 use std::path::PathBuf;
@@ -17,10 +20,11 @@ fn main() {
       default_panic(info);
     }
   }));
-  // TUI cancellation returns through backend cleanup. Plain execution retains
-  // immediate interruption, with activation journals available for recovery.
+  // TUI cancellation returns through backend cleanup. During an included tool,
+  // plain interruption lets its owned process tree stop and its journal persist.
+  // Other plain phases retain immediate interruption and activation retry records.
   if let Err(error) = ctrlc::set_handler(|| {
-    if !console::request_tui_cancel() {
+    if !console::request_tui_cancel() && !included_process::request_cancel() {
       console::canceled();
       std::process::exit(130);
     }
@@ -29,7 +33,7 @@ fn main() {
     std::process::exit(1);
   }
   if let Err(error) = run() {
-    if error.is::<console::Canceled>() {
+    if error.is::<console::Canceled>() || error.is::<included_process::Cancelled>() {
       console::canceled();
       std::process::exit(130);
     }

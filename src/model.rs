@@ -37,6 +37,14 @@ pub struct Runtime {
   pub shortcuts: Vec<Shortcut>,
   #[serde(default)]
   pub settings: Vec<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub host: Option<HostRequirements>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub tools: BTreeMap<String, IncludedTool>,
+  #[serde(default, skip_serializing_if = "Lifecycle::is_empty")]
+  pub lifecycle: Lifecycle,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub managed_files: Vec<String>,
 }
 
 fn cancel_confirmation_default(value: &bool) -> bool {
@@ -167,6 +175,63 @@ pub struct Receipt {
   pub values: BTreeMap<String, serde_json::Value>,
   pub engine_hash: String,
   pub config_hash: String,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub managed_files: BTreeMap<String, ManagedFile>,
   #[serde(default)]
   pub uninstalling: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct HostRequirements {
+  #[serde(default)]
+  pub distributions: BTreeMap<String, Vec<String>>,
+  #[serde(default)]
+  pub require_root: bool,
+  #[serde(default)]
+  pub require_systemd: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct IncludedTool {
+  pub executable: String,
+  pub sha256: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Lifecycle {
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub prepare: Vec<ToolCall>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub before_activate: Vec<ToolCall>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub after_activate: Vec<ToolCall>,
+}
+impl Lifecycle {
+  pub fn is_empty(&self) -> bool {
+    self.prepare.is_empty() && self.before_activate.is_empty() && self.after_activate.is_empty()
+  }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct ToolCall {
+  pub tool: String,
+  #[serde(default)]
+  pub arguments: Vec<String>,
+  #[serde(default)]
+  pub environment: BTreeMap<String, String>,
+  #[serde(default = "tool_timeout")]
+  pub timeout_seconds: u64,
+}
+fn tool_timeout() -> u64 {
+  600
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedFile {
+  pub hash: Option<String>,
+  pub mode: u32,
 }

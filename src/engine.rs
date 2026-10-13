@@ -12,7 +12,10 @@ use std::{
 };
 
 pub(crate) fn engine_name() -> &'static str {
-  if cfg!(windows) {
+  engine_name_for(config::platform())
+}
+pub(crate) fn engine_name_for(platform: &str) -> &'static str {
+  if platform == "windows" {
     "installer.exe"
   } else {
     "installer"
@@ -185,13 +188,14 @@ pub(crate) fn verify_entries(package: &Package, payload: &Path) -> Result<()> {
       path.is_file() || (cfg!(target_os = "macos") && path.is_dir() && path.extension().is_some_and(|x| x == "app")),
       "Missing executable: {executable}"
     );
-    #[cfg(windows)]
-    ensure!(
-      path.extension().is_some_and(|s| s.eq_ignore_ascii_case("exe")),
-      "Windows entry point must be .exe: {executable}"
-    );
+    if package.platform == "windows" {
+      ensure!(
+        path.extension().is_some_and(|s| s.eq_ignore_ascii_case("exe")),
+        "Windows entry point must be .exe: {executable}"
+      );
+    }
     #[cfg(unix)]
-    {
+    if package.platform != "windows" {
       use std::os::unix::fs::PermissionsExt;
       ensure!(
         fs::metadata(&path)?.permissions().mode() & 0o111 != 0,
@@ -207,15 +211,23 @@ pub(crate) fn verify_entries(package: &Package, payload: &Path) -> Result<()> {
       ensure!(payload.join(dir).is_dir(), "Missing working directory: {dir}");
     }
   }
+  crate::workflow::validate_entries(package, payload)?;
   Ok(())
 }
 pub fn install(config_file: &Path, package: Package, options: &Options) -> Result<()> {
   console::checkpoint("Checking package and installation settings...", true)?;
   let interactive = options.prompts(&package)?;
+  // Included tools write ordinary process streams; keep them outside the dialog
+  // until its presentation layer can route child output without corrupting it.
+  ensure!(
+    package.runtime.lifecycle.is_empty() || !interactive,
+    "Included-tool workflows require --non-interactive or runtime.interactive: false."
+  );
   if interactive {
     console::begin(&package.application, false)?;
   }
   config::validate(&package)?;
+  crate::host::validate(&package)?;
   let values = config::resolve(&package, options)?;
   let root = config::path(&values, "install-dir")?;
   ensure!(
@@ -276,6 +288,21 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
       !prepared.iter().any(|p| files::overlaps(Path::new(setting), &p.destination)),
       "Settings must not claim command launchers or shortcuts"
     );
+  }
+  let mut tool_values = values.clone();
+  tool_values.insert("build-dir".into(), serde_json::json!(directory));
+  tool_values.insert("context-file".into(), serde_json::json!(root.join("installer/context.json")));
+  for call in package
+    .runtime
+    .lifecycle
+    .prepare
+    .iter()
+    .chain(&package.runtime.lifecycle.before_activate)
+    .chain(&package.runtime.lifecycle.after_activate)
+  {
+    for text in call.arguments.iter().chain(call.environment.values()) {
+      config::expand(text, &tool_values)?;
+    }
   }
   // Validation is also the packaging smoke check; it performs no installation.
   if options.validate {
@@ -408,6 +435,18 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
       files::safe_path(Path::new(directory))?;
     }
   }
+  let configs = if package.runtime.lifecycle.is_empty() {
+    BTreeMap::new()
+  } else {
+    crate::workflow::preflight(
+      &package,
+      &root,
+      &values,
+      &old.as_ref().map(|r| r.managed_files.clone()).unwrap_or_default(),
+      &id,
+      &config_hash,
+    )?
+  };
   // From the first destination write through receipt finalization, complete the
   // operation rather than introducing orphan builds or mixed activation on Cancel.
   console::checkpoint("Installing application files...", true)?;
@@ -466,6 +505,7 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
     engine_hash: files::file_hash(&engine)?,
     config_hash,
     uninstalling: false,
+    managed_files: old.as_ref().map(|r| r.managed_files.clone()).unwrap_or_default(),
   };
   for directory in prepared.iter().filter_map(|p| p.shortcut_directory.as_ref()) {
     let name = as_string(directory);
@@ -490,6 +530,20 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
   files::write_atomic(&management.join(engine_name()), &fs::read(&engine)?)?;
   fs::set_permissions(management.join(engine_name()), fs::metadata(&engine)?.permissions())?;
   files::write_atomic(&management.join("installer.yaml"), yaml.as_bytes())?;
+  let mut workflow = if package.runtime.lifecycle.is_empty() {
+    None
+  } else {
+    Some(crate::workflow::Session::begin(&package, &root, &directory, &receipt, configs)?)
+  };
+  if let Some(workflow) = &mut workflow {
+    workflow.phase(&package, &directory, "prepare", &package.runtime.lifecycle.prepare)?;
+    workflow.phase(
+      &package,
+      &directory,
+      "before-activate",
+      &package.runtime.lifecycle.before_activate,
+    )?;
+  }
   receipt.launchers = launchers::apply(&prepared, &old.map(|r| r.launchers).unwrap_or_default())
     .context("Activate command launchers and shortcuts")?;
   receipt.shortcut_directories.retain(|name| {
@@ -504,6 +558,15 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
         }
       }
   });
+  if let Some(workflow) = &mut workflow {
+    workflow.phase(
+      &package,
+      &directory,
+      "after-activate",
+      &package.runtime.lifecycle.after_activate,
+    )?;
+    receipt.managed_files = workflow.complete()?;
+  }
   console::checkpoint("Finalizing installation...", false)?;
   if config::enabled(&receipt.values, "add-to-path") {
     let _path_lock = lock(&std::env::temp_dir().join("dotask-user-path"))?;
@@ -556,6 +619,8 @@ pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
     "Installation is incomplete; retry its original installer before uninstalling"
   );
   let mut receipt = load_receipt(root)?;
+  let installed: Package = files::read_yaml(&management.join("installer.yaml"))?;
+  ensure!(installed.runtime.lifecycle.is_empty(), "Lifecycle-managed installations require an explicit service/configuration cleanup workflow before uninstall. Persistent data and system packages are retained.");
   let _launcher_locks = lock_launcher_directories(root, receipt.launchers.iter().map(|l| PathBuf::from(&l.path)))?;
   files::verify_file(&management.join(engine_name()), &receipt.engine_hash)?;
   files::verify_file(&management.join("installer.yaml"), &receipt.config_hash)?;

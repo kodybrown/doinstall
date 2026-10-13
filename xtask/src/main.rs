@@ -10,7 +10,13 @@ fn main() {
   }
 }
 fn root() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+  // Shared external Cargo outputs can retain a helper compiled in another
+  // checkout. Cargo supplies the selected manifest directory when running it;
+  // never let a cached binary choose checkout ownership from a baked-in path.
+  std::env::var_os("CARGO_MANIFEST_DIR")
+    .map(PathBuf::from)
+    .map(|manifest| manifest.parent().unwrap().to_path_buf())
+    .unwrap_or_else(|| std::env::current_dir().expect("A build helper needs its invocation directory"))
 }
 fn execute(command: &mut Command) -> Result<()> {
   let code = command.status().context("Cannot start development tool")?;
@@ -70,6 +76,7 @@ fn run() -> Result<()> {
     }
     "verify" => {
       ensure!(args.len() == 1, "verify takes no arguments");
+      println!("Verification checkout: {}", root().display());
       cargo(&["fmt", "--all", "--", "--check"])?;
       cargo(&["test", "--package", "doinstall", "--locked", "--release"])?;
       cargo(&[

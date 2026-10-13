@@ -1,14 +1,18 @@
 //! Build-machine packaging lives in this executable, never in the shipped installer.
 #![allow(dead_code)]
+mod binary;
 mod build_info;
 mod config;
 mod console;
 mod engine;
 mod files;
+mod host;
+mod included_process;
 mod launchers;
 mod model;
 mod package;
 mod user_path;
+mod workflow;
 use anyhow::{bail, ensure, Context, Result};
 use std::path::PathBuf;
 fn main() {
