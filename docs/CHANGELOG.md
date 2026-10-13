@@ -257,3 +257,27 @@
   Updated existing Cursive cell checks assert main title/content/hint alignment
   and popup title/text alignment; compact footer overlap checks remain passing.
   Native platform acceptance of this one-column change was not repeated.
+
+### 2026-10-13 Keep resize notices visible and wrap long option labels
+
+- Give the undersized-terminal notice explicit contrasting text/backdrop colors.
+  Transparent layers had inherited a background style that made the notice
+  invisible. Retain controls and values while either dimension is too small,
+  and continue blocking installation until the form fits.
+- Soft-wrap checkbox labels beside their squares and choice labels into logical
+  option rows. Preserve single stored values, keyboard navigation, selection,
+  disabled state, full-option focus colors, and clicking continuation lines.
+  Map choice mouse coordinates and scroll focus to their logical option indices.
+- Add a temporary-root Linux/macOS interactive preview with PATH locked off,
+  plus WSL build, verification, unattended example, and UI preview commands.
+  Use a portable bundle/native Linux clone because Debian Git cannot read the
+  Windows repository's relative-worktree extension.
+- Verification: release build, build.cmd verify (83 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Actual Cursive cell checks cover notice contrast for narrow/short windows,
+  value preservation, Unicode label wrapping, continuation clicks, disabled
+  controls, choice scrolling/navigation, and reflow on resize. A native Windows
+  preview passed form display, cancellation, terminal restoration, and temporary
+  cleanup. Debian WSL successfully cloned/read the portable task bundle, and
+  the new Unix preview passed Bash syntax checking there;
+  its execution and native Linux/macOS/Windows ARM64 acceptance remain pending.

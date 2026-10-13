@@ -18,7 +18,7 @@ use cursive::{
   views::{BoxedView, Checkbox, Dialog, DummyView, EnableableView, LinearLayout, SelectView, TextView},
   Cursive, Printer, Vec2,
 };
-use presentation::{FocusRow, Form, WrappedInput};
+use presentation::{FocusRow, Form, WrappedChoices, WrappedInput};
 use serde_json::Value;
 use std::{
   collections::BTreeMap,
@@ -108,9 +108,13 @@ impl ViewWrapper for SizedDialog {
     if self.fits {
       self.view.draw(printer);
     } else {
-      printer.print((0, 0), "Terminal too small.");
-      printer.print((0, 1), "Resize to at least 50 columns x 14 rows.");
-      printer.print((0, 2), "Esc: cancel / close");
+      // Transparent layers inherit the stack's Background style, whose text
+      // can match its fill. A resize notice must choose its own readable colors.
+      printer.with_color(presentation::notice_style(), |p| {
+        p.print((0, 0), "Terminal too small.");
+        p.print((0, 1), "Resize to at least 50 columns x 14 rows.");
+        p.print((0, 2), "Esc: cancel / close");
+      });
     }
   }
   fn wrap_on_event(&mut self, event: Event) -> EventResult {
@@ -225,11 +229,14 @@ fn choices(siv: &mut Cursive) {
     content.add_child(TextView::new(presentation::description(
       "Application settings are preserved unless selected below.",
     )));
-    let checkbox = Checkbox::labelled("Remove application settings")
+    let checkbox = Checkbox::new()
       .with_enabled(!state.options.settings_explicit)
-      .with_checked(state.options.remove_settings)
-      .with_name("remove-settings");
-    content.add_child(FocusRow::new(checkbox).full_width());
+      .with_checked(state.options.remove_settings);
+    content.add_child(
+      FocusRow::new(checkbox, "Remove application settings")
+        .with_name("remove-settings")
+        .full_width(),
+    );
   } else {
     let mut names = vec![
       "install-dir",
@@ -287,18 +294,11 @@ fn choices(siv: &mut Cursive) {
       let explicit = state.options.values.contains_key(&name)
         || (name == "additional-command" && state.options.values.contains_key("bin-dir"));
       if input.kind == "boolean" {
-        let checkbox = Checkbox::labelled(label)
+        let checkbox = Checkbox::new()
           .with_checked(raw == "true")
           .on_change(|s, _| refresh_dependencies(s))
-          .with_name(name.clone());
-        content.add_child(
-          FocusRow::new(
-            EnableableView::new(checkbox)
-              .with_enabled(!explicit)
-              .with_name(format!("enabled-{name}")),
-          )
-          .full_width(),
-        );
+          .with_enabled(!explicit);
+        content.add_child(FocusRow::new(checkbox, label).with_name(name.clone()).full_width());
       } else {
         content.add_child(TextView::new(presentation::description(label)));
         let view = if input.kind == "choice" {
@@ -309,7 +309,10 @@ fn choices(siv: &mut Cursive) {
           }
           let selected = input.choices.iter().position(|choice| choice == &raw).map_or(0, |i| i + 1);
           BoxedView::new(Box::new(
-            choices.selected(selected).with_name(name.clone()).scrollable().max_height(4),
+            WrappedChoices::new(choices.selected(selected))
+              .with_name(name.clone())
+              .scrollable()
+              .max_height(4),
           ))
         } else {
           BoxedView::new(Box::new(
@@ -391,8 +394,8 @@ fn form_values(siv: &mut Cursive) -> BTreeMap<String, Value> {
   for name in fields {
     let value = match inputs[&name].kind.as_str() {
       "boolean" if name == "add-to-path" && path_choice.is_some() => path_choice.map(Value::Bool),
-      "boolean" => siv.call_on_name(&name, |view: &mut Checkbox| Value::Bool(view.is_checked())),
-      "choice" => siv.call_on_name(&name, |view: &mut SelectView<String>| {
+      "boolean" => siv.call_on_name(&name, |view: &mut FocusRow| Value::Bool(view.is_checked())),
+      "choice" => siv.call_on_name(&name, |view: &mut WrappedChoices| {
         Value::String(view.selection().map(|v| (*v).clone()).unwrap_or_default())
       }),
       _ => siv.call_on_name(&name, |view: &mut WrappedInput| Value::String(view.get_content().to_string())),
@@ -434,12 +437,12 @@ fn refresh_dependencies_with_path_check(siv: &mut Cursive, check_path: impl FnOn
   let already_on_path = matches!(&path_presence, Some(Ok(true)));
   if already_on_path {
     siv.user_data::<State>().unwrap().path_choice = Some(config::enabled(&values, "add-to-path"));
-    siv.call_on_name("add-to-path", |view: &mut Checkbox| {
+    siv.call_on_name("add-to-path", |view: &mut FocusRow| {
       // Ignore the callback: this is a presentation update, not a user edit.
       let _ = view.set_checked(true);
     });
   } else if let Some(choice) = siv.user_data::<State>().unwrap().path_choice.take() {
-    siv.call_on_name("add-to-path", |view: &mut Checkbox| {
+    siv.call_on_name("add-to-path", |view: &mut FocusRow| {
       let _ = view.set_checked(choice);
     });
   }
@@ -460,28 +463,22 @@ fn refresh_dependencies_with_path_check(siv: &mut Cursive, check_path: impl FnOn
     } && !options.values.contains_key(&name)
       && !(name == "additional-command" && options.values.contains_key("bin-dir"));
     let wrapper = format!("enabled-{name}");
-    // EnableableView blocks events and supplies disabled colors, but does not
-    // reject focus. Disable the real controls too, so Tab skips locked options.
+    // Nonboolean fields use EnableableView for disabled presentation, but that
+    // wrapper does not reject focus. Disable the actual controls too, so Tab
+    // skips locked options; checkbox rows already use their control's policy.
     let kind = siv.user_data::<State>().unwrap().inputs[&name].kind.clone();
     match kind.as_str() {
       "boolean" => {
-        siv.call_on_name(&name, |view: &mut Checkbox| view.set_enabled(allowed));
+        siv.call_on_name(&name, |view: &mut FocusRow| view.set_enabled(allowed));
       }
       "choice" => {
-        siv.call_on_name(&name, |view: &mut SelectView<String>| view.set_enabled(allowed));
+        siv.call_on_name(&name, |view: &mut WrappedChoices| view.set_enabled(allowed));
       }
       _ => {
         siv.call_on_name(&name, |view: &mut WrappedInput| view.set_enabled(allowed));
       }
     }
-    if siv
-      .call_on_name(&wrapper, |view: &mut EnableableView<BoxedView>| view.set_enabled(allowed))
-      .is_none()
-    {
-      siv.call_on_name(&wrapper, |view: &mut EnableableView<cursive::views::NamedView<Checkbox>>| {
-        view.set_enabled(allowed)
-      });
-    }
+    siv.call_on_name(&wrapper, |view: &mut EnableableView<BoxedView>| view.set_enabled(allowed));
   }
   let mut status = match path_presence {
       Some(Ok(true)) => "Selected command directory is already on PATH.\nThis option is checked and disabled because no PATH change is needed.".to_owned(),
@@ -510,7 +507,7 @@ fn start(siv: &mut Cursive) {
   options.interactive = Some(false);
   if action.uninstall() {
     options.remove_settings = siv
-      .call_on_name("remove-settings", |view: &mut Checkbox| view.is_checked())
+      .call_on_name("remove-settings", |view: &mut FocusRow| view.is_checked())
       .unwrap_or(false);
     options.settings_explicit = true;
   } else {
@@ -1020,7 +1017,7 @@ mod tests {
       BTreeMap::new(),
     );
     assert!(uninstall
-      .call_on_name("remove-settings", |v: &mut Checkbox| v.is_checked())
+      .call_on_name("remove-settings", |v: &mut FocusRow| v.is_checked())
       .unwrap());
   }
   #[test]

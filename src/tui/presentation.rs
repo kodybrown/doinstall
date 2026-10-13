@@ -5,7 +5,7 @@ use cursive::{
   theme::{BorderStyle, Color, ColorStyle, Effect, PaletteColor, PaletteStyle, Style, Theme},
   utils::markup::StyledString,
   view::{View, ViewWrapper},
-  views::{BoxedView, Dialog, DummyView, PaddedView, TextArea, ThemedView},
+  views::{BoxedView, Checkbox, Dialog, DummyView, PaddedView, SelectView, TextArea, TextView, ThemedView},
   Printer, Vec2,
 };
 use unicode_width::UnicodeWidthStr;
@@ -22,6 +22,10 @@ const SHADOW: Color = Color::Rgb(5, 9, 15);
 pub(super) const WARNING: Color = Color::Rgb(255, 203, 112);
 pub(super) const ERROR: Color = Color::Rgb(255, 143, 151);
 pub(super) const SUCCESS: Color = Color::Rgb(139, 222, 177);
+
+pub(super) fn notice_style() -> ColorStyle {
+  ColorStyle::new(TEXT, BACKDROP)
+}
 
 pub(super) fn description(text: impl Into<String>) -> StyledString {
   StyledString::styled(text.into(), ColorStyle::new(MUTED, SURFACE))
@@ -188,25 +192,47 @@ impl ViewWrapper for Form {
   }
 }
 
-/// Highlight the complete labelled checkbox without adding an indent or marker.
-/// The wrapper forwards focus and keyboard handling to the stock control.
-pub(super) struct FocusRow<V> {
-  view: V,
+/// Wrap the label beside the stock checkbox, highlighting every continuation
+/// row and keeping the entire option clickable. Stored values never change.
+pub(super) struct FocusRow {
+  view: Checkbox,
+  label: TextView,
   size: Vec2,
 }
-impl<V> FocusRow<V> {
-  pub(super) fn new(view: V) -> Self {
+impl FocusRow {
+  pub(super) fn new(view: Checkbox, label: impl Into<String>) -> Self {
     Self {
       view,
+      label: TextView::new(label.into()),
       size: Vec2::zero(),
     }
   }
+  pub(super) fn is_checked(&self) -> bool {
+    self.view.is_checked()
+  }
+  pub(super) fn set_checked(&mut self, checked: bool) -> EventResult {
+    self.view.set_checked(checked)
+  }
+  pub(super) fn is_enabled(&self) -> bool {
+    self.view.is_enabled()
+  }
+  pub(super) fn set_enabled(&mut self, enabled: bool) {
+    self.view.set_enabled(enabled);
+  }
 }
-impl<V: View> ViewWrapper for FocusRow<V> {
-  cursive::wrap_impl!(self.view: V);
+impl ViewWrapper for FocusRow {
+  cursive::wrap_impl!(self.view: Checkbox);
+  fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
+    let label = self.label.required_size(Vec2::new(available.x.saturating_sub(4), usize::MAX));
+    Vec2::new(label.x + 4, label.y.max(1))
+  }
   fn wrap_layout(&mut self, size: Vec2) {
     self.size = size;
-    self.view.layout(size);
+    self.view.layout(Vec2::new(3, 1));
+    self.label.layout(size.saturating_sub((4, 0)));
+  }
+  fn wrap_important_area(&self, _: Vec2) -> cursive::Rect {
+    cursive::Rect::from_size(Vec2::zero(), self.size)
   }
   fn wrap_on_event(&mut self, event: Event) -> EventResult {
     if let Event::Mouse {
@@ -215,8 +241,8 @@ impl<V: View> ViewWrapper for FocusRow<V> {
       offset,
     } = event
     {
-      // The whole labelled row is a checkbox target; EnableableView still
-      // refuses toggles for locked options.
+      // Continuation lines also toggle the option; the stock checkbox still
+      // refuses changes and focus for locked options.
       if position.fits_in_rect(offset, self.size) {
         return self.view.on_event(Event::Char(' '));
       }
@@ -224,16 +250,123 @@ impl<V: View> ViewWrapper for FocusRow<V> {
     self.view.on_event(event)
   }
   fn wrap_draw(&self, printer: &Printer) {
-    let focused = printer.focused && printer.enabled;
+    let enabled = printer.enabled && self.is_enabled();
+    let focused = printer.focused && enabled;
     let mut theme = theme();
     // A darker accent preserves contrast for the requested white checkbox
     // labels. Focus is expressed by the entire row, never a separate marker.
     theme.palette[PaletteStyle::Highlight] = Style::from(ColorStyle::new(TEXT, BUTTON)).combine(Effect::Bold);
     let printer = printer.theme(&theme);
-    printer.with_selection(focused, |p| {
-      p.print_hline((0, 0), p.size.x, " ");
+    let colors = ColorStyle::new(if enabled { TEXT } else { MUTED }, if focused { BUTTON } else { SURFACE });
+    printer.with_color(colors, |p| {
+      for y in 0..p.size.y {
+        p.print_hline((0, y), p.size.x, " ");
+      }
       self.view.draw(p);
+      self.label.draw(&p.offset((4, 0)));
     });
+  }
+}
+
+/// Preserve SelectView's item navigation and values while mapping each logical
+/// item to wrapped display rows. Mouse events and scroll focus use that mapping.
+pub(super) struct WrappedChoices {
+  view: SelectView<String>,
+  labels: Vec<TextView>,
+  rows: Vec<(usize, usize)>,
+  size: Vec2,
+}
+impl WrappedChoices {
+  pub(super) fn new(view: SelectView<String>) -> Self {
+    let labels = view.iter().map(|(label, _)| TextView::new(label)).collect();
+    Self {
+      view,
+      labels,
+      rows: Vec::new(),
+      size: Vec2::zero(),
+    }
+  }
+  pub(super) fn selection(&self) -> Option<std::sync::Arc<String>> {
+    self.view.selection()
+  }
+  pub(super) fn set_enabled(&mut self, enabled: bool) {
+    self.view.set_enabled(enabled);
+  }
+}
+impl ViewWrapper for WrappedChoices {
+  cursive::wrap_impl!(self.view: SelectView<String>);
+  fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
+    let height = self
+      .labels
+      .iter_mut()
+      .map(|label| label.required_size(Vec2::new(available.x, usize::MAX)).y.max(1))
+      .sum();
+    Vec2::new(available.x, height)
+  }
+  fn wrap_layout(&mut self, size: Vec2) {
+    self.size = size;
+    self.rows.clear();
+    let mut y = 0;
+    for label in &mut self.labels {
+      let height = label.required_size(Vec2::new(size.x, usize::MAX)).y.max(1);
+      label.layout(Vec2::new(size.x, height));
+      self.rows.push((y, height));
+      y += height;
+    }
+    self.view.layout(Vec2::new(size.x, self.labels.len()));
+  }
+  fn wrap_important_area(&self, size: Vec2) -> cursive::Rect {
+    self
+      .view
+      .selected_id()
+      .and_then(|i| self.rows.get(i))
+      .map(|&(y, height)| cursive::Rect::from_size((0, y), (size.x, height)))
+      .unwrap_or_else(|| cursive::Rect::from_size(Vec2::zero(), size))
+  }
+  fn wrap_on_event(&mut self, event: Event) -> EventResult {
+    if let Event::Mouse {
+      event,
+      position,
+      offset,
+    } = event
+    {
+      if let Some(position) = position.checked_sub(offset).filter(|p| p.fits_in(self.size))
+        && let Some(i) = self
+          .rows
+          .iter()
+          .position(|&(y, height)| position.y >= y && position.y < y + height)
+      {
+        return self.view.on_event(Event::Mouse {
+          event,
+          position: Vec2::new(position.x, i),
+          offset: Vec2::zero(),
+        });
+      }
+      return EventResult::Ignored;
+    }
+    self.view.on_event(event)
+  }
+  fn wrap_draw(&self, printer: &Printer) {
+    let enabled = printer.enabled && self.view.is_enabled();
+    for (i, (label, &(y, height))) in self.labels.iter().zip(&self.rows).enumerate() {
+      let p = printer.offset((0, y)).cropped((printer.size.x, height));
+      let selected = enabled && self.view.selected_id() == Some(i);
+      let style = if !enabled {
+        PaletteStyle::Secondary
+      } else if selected && printer.focused {
+        PaletteStyle::Highlight
+      } else if selected {
+        PaletteStyle::HighlightInactive
+      } else {
+        PaletteStyle::Primary
+      };
+      p.with_style(style, |p| {
+        for y in 0..p.size.y {
+          p.print_hline((0, y), p.size.x, " ");
+        }
+        label.draw(p);
+      });
+    }
   }
 }
 

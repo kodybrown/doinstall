@@ -147,6 +147,9 @@ fields, warnings, errors, and cancellation/validation dialogs share that theme.
 Buttons use padded labels without angle brackets. Focused checkboxes highlight
 the complete row without a marker or indentation; clicking the row toggles the checkbox.
 Enabled checkbox labels are white, with a darker focused row for contrast.
+Long checkbox labels and choice options wrap within the form; continuation rows
+retain the same focus colors and mouse target. Choices remain single values,
+with arrow keys navigating options rather than individual wrapped lines.
 Descriptions, PATH explanations, and field captions use subdued gray; disabled
 controls remain muted. The built-in installation caption is `Install to:`;
 application-defined prompts and plain-mode wording remain authoritative.
@@ -168,7 +171,9 @@ positions survive resizing. Height follows the
 content up to the available space. Configuration and result bodies scroll when
 space is limited. Below the minimum usable area (approximately 50 columns by 14 rows,
 including dialog margins), a resize message replaces the view without losing
-field values. Resizing during work does not suspend filesystem operations.
+field values. The notice uses explicit contrasting text on the backdrop, including
+when only the width or only the height is too small. Resizing during work does
+not suspend filesystem operations.
 Progress names the current operation, with no spinner, bar, or percentage. Summary
 paths and errors wrap, and Close restores the terminal and prints operation
 messages in scrollback. Cancellation returns 130, errors return 1, success 0.

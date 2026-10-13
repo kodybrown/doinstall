@@ -1,5 +1,6 @@
 //! Capture Cursive's actual cells and colors, not a separate mock renderer.
 use super::*;
+use cursive::event::{MouseButton, MouseEvent};
 use std::sync::Mutex;
 
 #[derive(Clone)]
@@ -199,6 +200,175 @@ fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
 }
 
 #[test]
+fn resize_notice_is_visible_and_form_values_survive_width_and_height_limits() {
+  let (_temp, mut siv, root) = fixture();
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 40))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  let before = form_values(&mut runner);
+  for size in [Vec2::new(30, 40), Vec2::new(100, 8), Vec2::new(20, 4)] {
+    *screen.lock().unwrap() = Screen::new(size);
+    runner.on_event(Event::WindowResize);
+    runner.refresh();
+    {
+      let screen = screen.lock().unwrap();
+      let position = screen.find("Terminal too small.");
+      let colors = screen.cell(position).colors;
+      assert_ne!(colors.front, colors.back, "Notice blended into transparent background");
+      assert_eq!(colors.front, Color::Rgb(235, 241, 248));
+      assert_eq!(colors.back, Color::Rgb(15, 21, 30));
+      screen.snapshot("small-terminal");
+    }
+    runner.on_event(Event::Key(Key::Enter));
+    assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Choices);
+    assert!(!root.exists());
+  }
+  *screen.lock().unwrap() = Screen::new(Vec2::new(100, 40));
+  runner.on_event(Event::WindowResize);
+  runner.refresh();
+  screen.lock().unwrap().find("Install to:");
+  assert_eq!(form_values(&mut runner), before);
+}
+
+#[test]
+fn wrapped_option_labels_preserve_selection_clicks_focus_and_resize() {
+  let label = format!("Checkbox beginning {} checkbox-tail", "related options 日本語 ".repeat(5));
+  let choice = format!("Choice beginning {} choice-tail", "long selection 日本語 ".repeat(5));
+  let mut choices = SelectView::new();
+  choices.add_item(&choice, choice.clone());
+  choices.add_item("Short option", "short".to_owned());
+  choices.add_item(
+    format!("Second beginning {} second-tail", "another long selection ".repeat(5)),
+    "second".to_owned(),
+  );
+  let mut siv = Cursive::default();
+  siv.set_theme(presentation::theme());
+  siv.screen_mut().add_layer(Transparent(SizedDialog::new(Form::new(
+    Dialog::around(
+      LinearLayout::vertical()
+        .child(FocusRow::new(Checkbox::new(), label).with_name("check").full_width())
+        .child(
+          WrappedChoices::new(choices)
+            .with_name("choose")
+            .full_width()
+            .scrollable()
+            .max_height(4),
+        ),
+    )
+    .title("Wrapped options")
+    .button("Close", |s| s.quit()),
+  ))));
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(70, 32))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  let checkbox_tail = {
+    let screen = screen.lock().unwrap();
+    let first = screen.find("Checkbox beginning");
+    let tail = screen.find("checkbox-tail");
+    assert!(tail.y > first.y);
+    assert_eq!(screen.cell(Vec2::new(first.x - 4, tail.y)).text, ' ');
+    assert_eq!(screen.cell(tail).colors, screen.cell(first).colors);
+    tail
+  };
+  for event in [
+    MouseEvent::Press(MouseButton::Left),
+    MouseEvent::Release(MouseButton::Left),
+  ] {
+    runner.on_event(Event::Mouse {
+      offset: Vec2::zero(),
+      position: checkbox_tail,
+      event,
+    });
+  }
+  assert!(runner.call_on_name("check", |v: &mut FocusRow| v.is_checked()).unwrap());
+  runner.on_event(Event::Key(Key::Tab));
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    let first = screen.find("Choice beginning");
+    let tail = screen.find("choice-tail");
+    assert!(tail.y > first.y);
+    assert_eq!(screen.cell(tail).colors, screen.cell(first).colors);
+    screen.snapshot("wrapped-options");
+  }
+  runner.on_event(Event::Key(Key::Down));
+  assert_eq!(
+    &*runner
+      .call_on_name("choose", |v: &mut WrappedChoices| v.selection().unwrap())
+      .unwrap(),
+    "short"
+  );
+  runner.refresh();
+  let choice_tail = screen.lock().unwrap().find("choice-tail");
+  for event in [
+    MouseEvent::Press(MouseButton::Left),
+    MouseEvent::Release(MouseButton::Left),
+  ] {
+    runner.on_event(Event::Mouse {
+      offset: Vec2::zero(),
+      position: choice_tail,
+      event,
+    });
+  }
+  assert_eq!(
+    &*runner
+      .call_on_name("choose", |v: &mut WrappedChoices| v.selection().unwrap())
+      .unwrap(),
+    &choice
+  );
+  runner.on_event(Event::Key(Key::Down));
+  runner.on_event(Event::Key(Key::Down));
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    let first = screen.find("Second beginning");
+    let tail = screen.find("second-tail");
+    assert!(tail.y > first.y);
+    assert_eq!(screen.cell(tail).colors, screen.cell(first).colors);
+  }
+  assert_eq!(
+    &*runner
+      .call_on_name("choose", |v: &mut WrappedChoices| v.selection().unwrap())
+      .unwrap(),
+    "second"
+  );
+  runner.on_event(Event::Key(Key::Home));
+  *screen.lock().unwrap() = Screen::new(Vec2::new(160, 32));
+  runner.on_event(Event::WindowResize);
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    assert_eq!(screen.find("Choice beginning").y, screen.find("choice-tail").y);
+  }
+  runner.call_on_name("check", |v: &mut FocusRow| v.set_enabled(false));
+  runner.call_on_name("choose", |v: &mut WrappedChoices| v.set_enabled(false));
+  runner.refresh();
+  let disabled = screen.lock().unwrap().find("Checkbox beginning");
+  assert_eq!(screen.lock().unwrap().cell(disabled).colors.front, Color::Rgb(157, 174, 195));
+  for event in [
+    MouseEvent::Press(MouseButton::Left),
+    MouseEvent::Release(MouseButton::Left),
+  ] {
+    runner.on_event(Event::Mouse {
+      offset: Vec2::zero(),
+      position: disabled,
+      event,
+    });
+  }
+  assert!(runner.call_on_name("check", |v: &mut FocusRow| v.is_checked()).unwrap());
+  assert!(runner
+    .call_on_name("check", |v: &mut FocusRow| v
+      .take_focus(cursive::direction::Direction::none())
+      .is_err())
+    .unwrap());
+  assert!(runner
+    .call_on_name("choose", |v: &mut WrappedChoices| v
+      .take_focus(cursive::direction::Direction::none())
+      .is_err())
+    .unwrap());
+}
+
+#[test]
 fn wrapped_unicode_values_edit_without_newlines_and_keep_cursor_on_resize() {
   let (_temp, mut siv, _root) = fixture();
   let size = Arc::new(AtomicUsize::new(70));
@@ -394,7 +564,7 @@ fn existing_path_is_checked_locked_and_restores_the_users_choice() {
     let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 48))));
     let mut runner = siv.runner(Box::new(Recording(screen.clone())));
     runner.refresh();
-    runner.call_on_name("add-to-path", |view: &mut Checkbox| {
+    runner.call_on_name("add-to-path", |view: &mut FocusRow| {
       let _ = view.set_checked(choice);
     });
     // Inject read-only membership results instead of editing the user's PATH.
@@ -405,7 +575,7 @@ fn existing_path_is_checked_locked_and_restores_the_users_choice() {
     refresh_dependencies_with_path_check(&mut runner, |_| Ok(true));
     runner.refresh();
     let state = runner
-      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .call_on_name("add-to-path", |view: &mut FocusRow| (view.is_checked(), view.is_enabled()))
       .unwrap();
     assert_eq!(state, (true, false));
     assert_eq!(
@@ -432,7 +602,7 @@ fn existing_path_is_checked_locked_and_restores_the_users_choice() {
     });
     assert_eq!(
       runner
-        .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+        .call_on_name("add-to-path", |view: &mut FocusRow| (view.is_checked(), view.is_enabled()))
         .unwrap(),
       (choice, true)
     );
@@ -468,13 +638,13 @@ fn cli_path_lock_remains_explained_and_safe_when_membership_changes() {
   refresh_dependencies_with_path_check(&mut runner, |_| Ok(true));
   assert_eq!(
     runner
-      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .call_on_name("add-to-path", |view: &mut FocusRow| (view.is_checked(), view.is_enabled()))
       .unwrap(),
     (true, false)
   );
   assert_eq!(form_values(&mut runner)["add-to-path"], false);
   // With an additional command selected, its directory is the PATH candidate.
-  runner.call_on_name("additional-command", |view: &mut Checkbox| {
+  runner.call_on_name("additional-command", |view: &mut FocusRow| {
     let _ = view.set_checked(true);
   });
   refresh_dependencies_with_path_check(&mut runner, |directory| {
@@ -484,7 +654,7 @@ fn cli_path_lock_remains_explained_and_safe_when_membership_changes() {
   runner.refresh();
   assert_eq!(
     runner
-      .call_on_name("add-to-path", |view: &mut Checkbox| (view.is_checked(), view.is_enabled()))
+      .call_on_name("add-to-path", |view: &mut FocusRow| (view.is_checked(), view.is_enabled()))
       .unwrap(),
     (false, false)
   );
