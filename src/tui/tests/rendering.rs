@@ -128,7 +128,9 @@ fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
     normal
   };
   runner.call_on_name("installer-dialog", |form: &mut Form| {
-    let _ = form.view.set_focus(cursive::views::DialogFocus::Button(0));
+    let _ = form
+      .view
+      .set_focus(cursive::views::DialogFocus::Button(if cfg!(windows) { 0 } else { 1 }));
   });
   runner.refresh();
   {
@@ -160,7 +162,7 @@ fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
   runner.refresh();
   {
     let screen = screen.lock().unwrap();
-    screen.find("Confirm cancellation");
+    screen.find("Confirm");
     screen.find(" No ");
     assert!(!screen.cells.iter().any(|c| "┤├┌┐└┘─".contains(c.text)));
     screen.snapshot("cancel");
@@ -462,4 +464,135 @@ fn cli_path_lock_remains_explained_and_safe_when_membership_changes() {
   assert_eq!(form_values(&mut runner)["add-to-path"], false);
   screen.lock().unwrap().find("locked by the command-line setting");
   assert!(!root.exists());
+}
+
+#[test]
+fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
+  let (_temp, mut siv, _root) = fixture();
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 44))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    let title = screen.find("Probe · 1.0");
+    let left = title.x - 2;
+    let cap = Vec2::new(left, title.y - 1);
+    assert_eq!(screen.cell(cap).text, '▄');
+    assert_eq!(screen.cell(cap).colors.back, Color::Rgb(15, 21, 30));
+    assert_eq!(screen.cell(Vec2::new(left + 1, title.y + 1)).text, '▀');
+    let width = screen.cells[cap.y * screen.size.x + left..]
+      .iter()
+      .take_while(|cell| cell.text == '▄')
+      .count();
+    assert_eq!(screen.cell(Vec2::new(left + width, title.y)).colors.back, Color::Rgb(5, 9, 15));
+    let bottom_shadow = (title.y + 2..screen.size.y)
+      .find(|y| {
+        let cell = screen.cell(Vec2::new(left + 1, *y));
+        cell.text == '▀' && cell.colors.front == Color::Rgb(5, 9, 15)
+      })
+      .unwrap();
+    assert_eq!(
+      screen.cell(Vec2::new(left + 1, bottom_shadow)).colors.back,
+      Color::Rgb(15, 21, 30)
+    );
+    let hints = screen.find("Tab:move  Space:toggle Esc:cancel");
+    assert_eq!(hints.y, screen.find(" Install ").y);
+    assert_eq!(hints.y, screen.find(" Cancel ").y);
+  }
+  runner.on_event(Event::Key(Key::Esc));
+  runner.refresh();
+  let screen = screen.lock().unwrap();
+  let title = screen.find("Confirm");
+  let question = screen.find("Cancel installation?");
+  let cap = Vec2::new(title.x - 2, title.y - 1);
+  assert_eq!(screen.cell(cap).text, '▄');
+  assert_eq!(screen.cell(cap).colors.back, presentation::SURFACE);
+  let width = screen.cells[cap.y * screen.size.x + cap.x..]
+    .iter()
+    .take_while(|cell| cell.text == '▄')
+    .count();
+  for y in [question.y - 1, question.y + 1] {
+    for x in cap.x + 1..cap.x + width - 1 {
+      let cell = screen.cell(Vec2::new(x, y));
+      assert_eq!(cell.text, ' ');
+      assert_eq!(cell.colors.back, presentation::SURFACE);
+    }
+  }
+  assert_eq!(screen.cell(Vec2::new(cap.x + width, title.y)).colors.back, Color::Rgb(5, 9, 15));
+}
+
+#[test]
+fn compact_footer_hints_never_overlap_the_action_buttons() {
+  let (_temp, mut siv, _root) = fixture();
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(50, 40))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  let screen = screen.lock().unwrap();
+  let hint = screen.find("Tab:move Esc:cancel");
+  let install = screen.find(" Install ");
+  let cancel = screen.find(" Cancel ");
+  assert_eq!(hint.y, install.y);
+  assert_eq!(hint.y, cancel.y);
+  assert!(hint.x + "Tab:move Esc:cancel".len() < install.x.min(cancel.x));
+  assert_eq!(install.x < cancel.x, cfg!(windows));
+  screen.snapshot("compact-footer");
+}
+
+#[test]
+fn both_platform_confirmation_orders_keep_no_default_and_yes_clickable() {
+  for windows in [true, false] {
+    let (_temp, mut siv, root) = fixture();
+    siv.user_data::<State>().unwrap().confirming_cancel = true;
+    siv.screen_mut().add_layer(Transparent(Form::popup(cancellation_dialog(
+      "Cancel installation?".into(),
+      windows,
+    ))));
+    let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 44))));
+    let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+    runner.refresh();
+    {
+      let screen = screen.lock().unwrap();
+      let yes = screen.find(" Yes ");
+      let no = screen.find(" No ");
+      assert_eq!(yes.y, no.y);
+      assert_eq!(yes.x < no.x, windows);
+      assert_eq!(screen.cell(no).colors.back, Color::Rgb(119, 205, 236));
+      screen.snapshot(if windows {
+        "confirm-windows"
+      } else {
+        "confirm-unix"
+      });
+    }
+    runner.on_event(Event::Key(Key::Enter));
+    assert!(!runner.user_data::<State>().unwrap().confirming_cancel);
+    assert!(runner.user_data::<State>().unwrap().outcome.is_none());
+    runner.user_data::<State>().unwrap().confirming_cancel = true;
+    runner.screen_mut().add_layer(Transparent(Form::popup(cancellation_dialog(
+      "Cancel installation?".into(),
+      windows,
+    ))));
+    runner.refresh();
+    let yes = screen.lock().unwrap().find(" Yes ");
+    for event in [
+      cursive::event::MouseEvent::Press(cursive::event::MouseButton::Left),
+      cursive::event::MouseEvent::Release(cursive::event::MouseButton::Left),
+    ] {
+      runner.on_event(Event::Mouse {
+        offset: Vec2::zero(),
+        position: yes,
+        event,
+      });
+    }
+    assert!(!runner.is_running());
+    assert!(runner
+      .user_data::<State>()
+      .unwrap()
+      .outcome
+      .as_ref()
+      .unwrap()
+      .as_ref()
+      .unwrap_err()
+      .is::<console::Canceled>());
+    assert!(!root.exists());
+  }
 }

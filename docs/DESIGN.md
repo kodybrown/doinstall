@@ -215,12 +215,21 @@ presentation metadata: stable sorting groups related controls without changing
 resolution or plain-mode prompt order. Both additions omit unused defaults when
 serialized to preserve package content identity.
 
-The form wrapper paints space-filled edges and a header/footer while Cursive's
+The form wrapper paints space-filled side edges, half-block title caps, and a
+header/footer while Cursive's
 Dialog owns geometry, focus, buttons and hit testing. A separate body palette
 allows padded raw button labels to have normal/focused background fills without
 coloring ordinary text as buttons. Validation, cancellation, warnings and errors
 use the same presentation. Checkbox rows add a focus marker, full-label highlight
 and row clicking while retaining the stock checkbox state and enablement checks.
+
+Forms use transparent StackView layers and own their one-column/half-row shadows
+instead of Cursive's full-row shadow/backfill. A reserved top cap row shifts the
+Dialog by one row; event coordinates and important areas use the same offset.
+Popup bodies add one blank surface row above and below the text. Compact keyboard
+hints share the action row and shorten when needed to avoid drawing over buttons.
+Affirmative buttons precede negative buttons on Windows; Linux/macOS reverses
+that order. `Confirm` always focuses No explicitly, independent of placement.
 
 TextArea supplies soft wrapping and Unicode cursor editing for single values.
 The wrapper refuses typed newlines, preserves Tab navigation, and limits height

@@ -205,3 +205,25 @@
   changes, additional-command selection, and CLI locks. Membership results are
   injected without changing real PATH or active installations; native acceptance
   of this specific membership transition remains pending.
+
+### 2026-10-13 Match the console title bars and popup layout to the reference
+
+- Use half-block top/bottom title caps and one-column/half-row shadows on forms
+  and popups, matching the supplied after screenshot. Keep popup text separated
+  from the header and footer by one blank surface row above and below it.
+- Move condensed keyboard instructions onto the choices button row, shortening
+  hints at narrow widths without overlapping actions. Put affirmative actions
+  first on Windows and negative actions first on Linux/macOS. Rename the cancel
+  popup to `Confirm`; explicitly retain No as its safe default on every platform.
+- Keep Cursive's control geometry and translate mouse/focus coordinates with the
+  new title-cap offset. Preserve resize/edit state, PATH policy, installation
+  ownership, and plain/unattended behavior.
+- Verification: release build, build.cmd verify (81 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Actual Cursive cell/event tests cover half-block colors, shadow offsets, blank
+  popup margins, wide/compact footer alignment, both platform button orders,
+  safe Enter defaults, and mouse activation after repositioning. Native Windows
+  acceptance passed using temporary hello preview roots with PATH changes
+  disabled, including the updated form/popup, No/Yes selection, installation,
+  summary, cancellation, terminal restoration, and cleanup.
+  Native Linux/macOS/Windows ARM64 acceptance remains pending.

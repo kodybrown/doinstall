@@ -141,10 +141,16 @@ Default theme selection and omitted group indices are omitted from serialized
 packages, so unused presentation metadata does not change package snapshots.
 
 The default theme uses a dark backdrop, contrasting form surface, colored space
-cells for the form edge, and a shadow. Headers, footers, normal/focused buttons,
+cells for the side edges, half-block title caps, and a one-column/half-row offset
+shadow. Popup text has one blank surface row above and below it. Headers, footers, normal/focused buttons,
 fields, warnings, errors, and cancellation/validation dialogs share that theme.
 Buttons use padded labels without angle brackets. Focused checkboxes highlight
 the complete label and show a `>` marker; clicking the row toggles the checkbox.
+Choices show `Tab:move  Space:toggle Esc:cancel` on the button row; narrower
+terminals use shorter hints on that same row without covering the buttons.
+Tab/Shift+Tab navigation remains available even when the compact hint omits it.
+Windows places affirmative buttons first (Install/Cancel or Yes/No); Linux/macOS
+places the negative button first (Cancel/Install or No/Yes).
 
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
@@ -171,7 +177,8 @@ falls back to 80 columns. Unattended output remains plain.
 
 `runtime.confirm-cancel` is a boolean that defaults to true. In the interactive
 install/uninstall dialog, Cancel, Escape, or Ctrl+C asks for confirmation before
-canceling choices or requesting a stop during work. No is the default button;
+canceling choices or requesting a stop during work. The popup title is `Confirm`.
+No is the default button regardless of its platform-specific position;
 Enter, No, or Escape in that confirmation resumes the dialog without losing
 values. Set `confirm-cancel: false` to request cancellation immediately. Closing
 a completed summary never asks for cancellation confirmation. If work finishes

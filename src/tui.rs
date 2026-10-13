@@ -8,6 +8,7 @@ use crate::{
   user_path,
 };
 use anyhow::{anyhow, Result};
+use cursive::views::stack_view::Transparent;
 use cursive::{
   event::{Event, EventResult, Key},
   theme::{ColorStyle, Effect, Style},
@@ -331,21 +332,21 @@ fn choices(siv: &mut Cursive) {
       content.add_child(TextView::new("").with_name("path-status"));
     }
   }
-  content.add_child(DummyView.fixed_height(1));
-  content.add_child(TextView::new("Tab / Shift+Tab: move   Space: toggle   Esc: cancel"));
   let action_label = if state.action.uninstall() {
     "Uninstall"
   } else {
     "Install"
   };
-  let dialog = Form::new(
-    Dialog::around(content.scrollable())
-      .title(title)
-      .button(action_label, start)
-      .button("Cancel", cancel_or_close),
-  )
-  .with_name("installer-dialog");
-  siv.add_layer(SizedDialog::new(dialog));
+  let mut dialog = Dialog::around(content.scrollable()).title(title);
+  if cfg!(windows) {
+    dialog.add_button(action_label, start);
+    dialog.add_button("Cancel", cancel_or_close);
+  } else {
+    dialog.add_button("Cancel", cancel_or_close);
+    dialog.add_button(action_label, start);
+  }
+  let dialog = Form::new(dialog).instructions().with_name("installer-dialog");
+  siv.screen_mut().add_layer(Transparent(SizedDialog::new(dialog)));
   refresh_dependencies(siv);
 }
 fn group_index(name: &str, input: &Input) -> u32 {
@@ -519,7 +520,7 @@ fn start(siv: &mut Cursive) {
     if let Err(error) =
       config::resolve(action.package(), &options).and_then(|values| config::path(&values, "install-dir").map(|_| ()))
     {
-      siv.add_layer(SizedDialog::new(Form::new(
+      siv.screen_mut().add_layer(Transparent(SizedDialog::new(Form::popup(
         Dialog::around(
           TextView::new(StyledString::styled(
             format!("Check installation settings:\n{error:#}"),
@@ -531,7 +532,7 @@ fn start(siv: &mut Cursive) {
         .button("OK", |s| {
           s.pop_layer();
         }),
-      )));
+      ))));
       return;
     }
   }
@@ -540,7 +541,7 @@ fn start(siv: &mut Cursive) {
   let cancel = state.cancel.clone();
   let title = action.package().application.name.clone();
   siv.pop_layer();
-  siv.add_layer(SizedDialog::new(Form::new(
+  siv.screen_mut().add_layer(Transparent(SizedDialog::new(Form::new(
     Dialog::around(
       LinearLayout::vertical()
         .child(TextView::new("Preparing…").with_name("progress"))
@@ -556,7 +557,7 @@ fn start(siv: &mut Cursive) {
     )
     .title(title)
     .button("Cancel", cancel_or_close),
-  )));
+  ))));
   let sink = siv.cb_sink().clone();
   let events = sink.clone();
   let operation = Operation {
@@ -637,11 +638,11 @@ fn finished(siv: &mut Cursive, outcome: Result<()>) {
     siv.pop_layer();
   }
   siv.pop_layer();
-  siv.add_layer(SizedDialog::new(Form::new(
+  siv.screen_mut().add_layer(Transparent(SizedDialog::new(Form::new(
     Dialog::around(TextView::new(summary).scrollable())
       .title(format!("{title} — Summary"))
       .button("Close", |s| s.quit()),
-  )));
+  ))));
 }
 fn handle_interrupt(siv: &mut Cursive) {
   if siv
@@ -679,24 +680,32 @@ fn cancel_or_close(siv: &mut Cursive) {
     } else {
       format!("Cancel {action}?")
     };
-    // No is first and focused by default, so Enter preserves the operation.
+    // Platform order changes placement, never consent: No stays focused so
+    // Enter preserves the operation on every platform.
     // Keep this modal compact and usable below the form's minimum size, so
     // the resize notice does not prevent the user from confirming cancellation.
-    siv.add_layer(
-      Form::new(
-        Dialog::text(StyledString::styled(
-          question,
-          ColorStyle::new(presentation::WARNING, presentation::SURFACE),
-        ))
-        .title("Confirm cancellation")
-        .button("No", dismiss_cancel)
-        .button("Yes", confirm_cancel),
-      )
-      .with_name("cancel-confirmation"),
-    );
+    siv.screen_mut().add_layer(Transparent(
+      Form::popup(cancellation_dialog(question, cfg!(windows))).with_name("cancel-confirmation"),
+    ));
   } else {
     perform_cancel(siv);
   }
+}
+fn cancellation_dialog(question: String, windows: bool) -> Dialog {
+  let mut dialog = Dialog::text(StyledString::styled(
+    question,
+    ColorStyle::new(presentation::WARNING, presentation::SURFACE),
+  ))
+  .title("Confirm");
+  if windows {
+    dialog.add_button("Yes", confirm_cancel);
+    dialog.add_button("No", dismiss_cancel);
+  } else {
+    dialog.add_button("No", dismiss_cancel);
+    dialog.add_button("Yes", confirm_cancel);
+  }
+  let _ = dialog.set_focus(cursive::views::DialogFocus::Button(if windows { 1 } else { 0 }));
+  dialog
 }
 fn dismiss_cancel(siv: &mut Cursive) {
   if siv.user_data::<State>().unwrap().confirming_cancel {
@@ -1080,7 +1089,9 @@ mod tests {
     runner.refresh();
     assert!(output.lock().unwrap().contains("Terminal too small."));
     runner.call_on_name("installer-dialog", |view: &mut Form| {
-      let _ = view.view.set_focus(cursive::views::DialogFocus::Button(0));
+      let _ = view
+        .view
+        .set_focus(cursive::views::DialogFocus::Button(if cfg!(windows) { 0 } else { 1 }));
     });
     runner.on_event(Event::Key(Key::Enter));
     assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Choices);
