@@ -294,3 +294,17 @@
 - Verification: documentation-only follow-up; checked the documented paths
   against the user's successful command/output and ran git diff --check.
   Source remains the previously verified UI implementation (83 Windows tests).
+
+### 2026-10-13 Verify the console UI with included-tool installation workflows
+
+- Reconcile the console UI branch with the committed included-tool workflows,
+  preserving both feature sets and their changelog entries. Record Debian WSL
+  debug-test coverage separately from the user's interactive preview and the
+  pending Linux release/macOS/ARM64 acceptance.
+- Verification: build.cmd verify passed 95 Rust tests, formatting, clippy, shim
+  integrity/PE checks, and git diff --check on Windows x64. The release build
+  passed. Native Debian WSL cargo test --package doinstall --locked passed all
+  79 Linux Rust tests, including UI, included-tool, and installation lifecycle
+  fixtures. Cargo targets remain external under C:/tmp/_rust/doinstall/target
+  on Windows and /tmp/_rust/doinstall/target in Debian; tests use temporary roots
+  and do not change the active installation or user PATH.

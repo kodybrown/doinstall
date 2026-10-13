@@ -63,8 +63,9 @@ Tests use disposable install/command/shortcut directories and a disposable
 registry key; they do not modify an active installation or the user's PATH.
 The inherited Windows x64 runtime coverage is retained. The user also reported
 a successful Linux x64 interactive preview in Debian WSL using a native debug
-build. Full Linux lifecycle/release verification, macOS, and Windows ARM64
-acceptance remain pending; the WSL preview does not establish those results.
+build. The combined UI/included-tools branch also passed 79 Rust tests in Debian
+WSL using a native debug build. Linux release verification, macOS, and Windows
+ARM64 acceptance remain pending.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
 [src/shim](src/shim/README.md). Rebuilding those assets requires LLVM.

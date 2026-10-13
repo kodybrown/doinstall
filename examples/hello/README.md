@@ -92,5 +92,6 @@ needs a compatible Linux Git or a native Linux clone made from a portable bundle
 
 The same preview script works in native Linux/macOS Bash with tools built for
 that host. The user reported this Linux x64 preview passed in Debian WSL using
-a native `cargo build` debug binary. Full Linux lifecycle/release verification
-and macOS/ARM64 execution remain pending.
+a native `cargo build` debug binary. The combined UI/included-tools source also
+passed all 79 Rust tests in Debian WSL. Linux release verification and
+macOS/ARM64 execution remain pending.
