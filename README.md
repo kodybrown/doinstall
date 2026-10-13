@@ -61,9 +61,10 @@ Try the [temporary Windows UI preview](examples/hello/README.md#interactive-wind
 `verify` runs formatting, Rust tests, clippy, shim hashes, and Git whitespace.
 Tests use disposable install/command/shortcut directories and a disposable
 registry key; they do not modify an active installation or the user's PATH.
-The inherited Windows x64 runtime coverage is retained. Native Linux/macOS and
-Windows ARM64 acceptance remain pending. Source-supported platforms are not
-claims of native acceptance.
+The inherited Windows x64 runtime coverage is retained. The user also reported
+a successful Linux x64 interactive preview in Debian WSL using a native debug
+build. Full Linux lifecycle/release verification, macOS, and Windows ARM64
+acceptance remain pending; the WSL preview does not establish those results.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
 [src/shim](src/shim/README.md). Rebuilding those assets requires LLVM.

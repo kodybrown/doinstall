@@ -53,33 +53,29 @@ uninstall when the application remains at its initial preview location.
 ## Interactive Linux/macOS preview and WSL
 
 Build and run Linux binaries inside WSL to test Linux behavior on Windows.
-The installed Debian Git cannot read this Windows repository's `relativeWorktrees`
-extension. Export the committed task branch to a portable bundle using Windows
-Git, then enter Debian from PowerShell:
+Enter Debian from PowerShell:
 
 ```powershell
-cd C:\Users\kodyb\Projects\doinstall\worktrees\ai\console-ui-refresh
-git bundle create C:\tmp\doinstall-ui-refresh.bundle codex/console-ui-refresh
 wsl -d Debian
 ```
 
 The Linux environment needs Rust 1.95 or newer, rustfmt, clippy, Git, and a C
 linker. Windows Rust binaries do not replace the Linux toolchain.
 
-In the WSL Bash shell, clone that snapshot into a fresh Linux directory, build,
-and stage the tools outside source:
+In the WSL Bash shell, build from the ordinary Windows source directory and run
+the debug preview. Cargo keeps the generated tools outside source:
 
 ```bash
-linux_checkout=$(mktemp -d /tmp/doinstall-wsl-XXXXXXXX)
-git clone --branch codex/console-ui-refresh /mnt/c/tmp/doinstall-ui-refresh.bundle "$linux_checkout"
-cd "$linux_checkout"
-bash build.sh verify
-bash build.sh build --stage-dir /tmp/doinstall-wsl-tools
-bash examples/hello/run.sh /tmp/doinstall-wsl-tools/doinstall /tmp/doinstall-wsl-tools/doinstall-builder
-bash examples/hello/preview.sh /tmp/doinstall-wsl-tools/doinstall /tmp/doinstall-wsl-tools/doinstall-builder
+cd /mnt/c/Users/kodyb/Projects/doinstall
+cargo build --locked
+cargo test --package doinstall --locked
+env -u NO_COLOR bash examples/hello/preview.sh \
+  /tmp/_rust/doinstall/target/debug/doinstall \
+  /tmp/_rust/doinstall/target/debug/doinstall-builder
 ```
 
-`run.sh` checks the unattended lifecycle; `preview.sh` opens the interactive form.
+`preview.sh` opens the interactive form. To check the unattended lifecycle, use
+`run.sh` with the same two tool paths.
 The preview uses fresh temporary roots, locks PATH off, removes the initial
 preview installation if present, and cleans up its generated directory on exit.
 Keep edited paths under the printed root, as with the Windows preview.
@@ -89,8 +85,12 @@ check the notice and restoration, use Tab/Shift+Tab and Space, and check the Lin
 Cancel/Install and No/Yes button order. WSL exercises Linux; macOS and other
 terminal hosts still need their own acceptance.
 
-Regenerate the bundle and use a new temporary clone to test later commits. This
-does not integrate the task branch or alter the Windows working checkout.
+Older Debian Git cannot read this Windows repository's `relativeWorktrees`
+extension. That affects `build.sh verify` at its Git whitespace check, but does
+not prevent these Cargo build/test commands or the preview. Full verification
+needs a compatible Linux Git or a native Linux clone made from a portable bundle.
 
 The same preview script works in native Linux/macOS Bash with tools built for
-that host. Native Unix execution of this new preview remains pending.
+that host. The user reported this Linux x64 preview passed in Debian WSL using
+a native `cargo build` debug binary. Full Linux lifecycle/release verification
+and macOS/ARM64 execution remain pending.

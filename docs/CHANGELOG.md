@@ -281,3 +281,16 @@
   cleanup. Debian WSL successfully cloned/read the portable task bundle, and
   the new Unix preview passed Bash syntax checking there;
   its execution and native Linux/macOS/Windows ARM64 acceptance remain pending.
+
+### 2026-10-13 Record Debian WSL UI acceptance and simplify preview commands
+
+- Record the user's successful Linux x64 interactive preview in Debian WSL from
+  a native Cargo debug build. Keep full Linux lifecycle/release verification,
+  macOS, and Windows ARM64 acceptance separate and pending.
+- Replace the required bundle/clone preview route with direct Cargo build/test
+  and preview commands from the Windows source directory. Older Debian Git's
+  relative-worktree limitation affects the full verification script's whitespace
+  check, not Cargo compilation/tests or the interactive preview.
+- Verification: documentation-only follow-up; checked the documented paths
+  against the user's successful command/output and ran git diff --check.
+  Source remains the previously verified UI implementation (83 Windows tests).
