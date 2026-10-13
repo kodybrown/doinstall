@@ -502,7 +502,8 @@ fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
   {
     let screen = screen.lock().unwrap();
     let title = screen.find("Probe · 1.0");
-    let left = title.x - 2;
+    assert_eq!(title.x, screen.find("Install to:").x);
+    let left = title.x - 3;
     let cap = Vec2::new(left, title.y - 1);
     assert_eq!(screen.cell(cap).text, '▄');
     assert_eq!(screen.cell(cap).colors.back, Color::Rgb(15, 21, 30));
@@ -523,6 +524,7 @@ fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
       Color::Rgb(15, 21, 30)
     );
     let hints = screen.find("Tab:move  Space:toggle Esc:cancel");
+    assert_eq!(hints.x, title.x);
     assert_eq!(hints.y, screen.find(" Install ").y);
     assert_eq!(hints.y, screen.find(" Cancel ").y);
   }
@@ -531,7 +533,8 @@ fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
   let screen = screen.lock().unwrap();
   let title = screen.find("Confirm");
   let question = screen.find("Cancel installation?");
-  let cap = Vec2::new(title.x - 2, title.y - 1);
+  assert_eq!(title.x, question.x);
+  let cap = Vec2::new(title.x - 3, title.y - 1);
   assert_eq!(screen.cell(cap).text, '▄');
   assert_eq!(screen.cell(cap).colors.back, presentation::SURFACE);
   let width = screen.cells[cap.y * screen.size.x + cap.x..]

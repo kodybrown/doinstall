@@ -111,7 +111,7 @@ impl ViewWrapper for Form {
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
     let usable = available.saturating_sub((1, 2));
     let mut size = self.view.required_size(usable);
-    size.x = size.x.max(self.title.width() + 4).min(usable.x);
+    size.x = size.x.max(self.title.width() + 5).min(usable.x);
     size + (1, 2)
   }
   fn wrap_layout(&mut self, size: Vec2) {
@@ -160,7 +160,7 @@ impl ViewWrapper for Form {
       p.print_hline((0, p.size.y - 1), p.size.x, " ");
       p.print_vline((0, 0), p.size.y, " ");
       p.print_vline((p.size.x - 1, 0), p.size.y, " ");
-      p.with_effect(Effect::Bold, |p| p.print((2, 0), &self.title));
+      p.with_effect(Effect::Bold, |p| p.print((3, 0), &self.title));
     });
     printer.with_color(ColorStyle::new(EDGE, SURFACE), |p| {
       if size.x > 2 {
@@ -174,7 +174,7 @@ impl ViewWrapper for Form {
       // Dialog right-aligns its buttons with a three-column outer inset. Keep
       // the hints on that row and shorten them at narrow widths, never overdraw
       // the actual Buttons or change their mouse hit areas.
-      let available = size.x.saturating_sub(buttons_width + 8);
+      let available = size.x.saturating_sub(buttons_width + 9);
       let hint = [
         "Tab:move  Space:toggle Esc:cancel",
         "Tab:move Esc:cancel",
@@ -183,7 +183,7 @@ impl ViewWrapper for Form {
       .into_iter()
       .find(|hint| hint.width() <= available)
       .unwrap_or("");
-      printer.with_color(ColorStyle::new(TEXT, EDGE), |p| p.print((2, size.y - 2), hint));
+      printer.with_color(ColorStyle::new(TEXT, EDGE), |p| p.print((3, size.y - 2), hint));
     }
   }
 }
