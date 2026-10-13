@@ -49,7 +49,7 @@ from the same build together on the build machine.
 
 Install and uninstall use a themed Cursive form with colored surfaces, a shadow,
 filled buttons, grouped options, and keyboard navigation. Focused checkboxes
-highlight their label and show a marker; long input values soft-wrap. Choices,
+highlight their whole row and align with the fields; long input values soft-wrap. Choices,
 text-only progress, and wrapped summaries occupy separate screens. Cancel/Escape/Ctrl+C confirms by default;
 `runtime.confirm-cancel: false` skips the confirmation. `--plain` uses the original line prompts;
 `--non-interactive` keeps automation output plain. `runtime.theme: default` selects

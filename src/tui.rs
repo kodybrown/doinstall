@@ -11,7 +11,7 @@ use anyhow::{anyhow, Result};
 use cursive::views::stack_view::Transparent;
 use cursive::{
   event::{Event, EventResult, Key},
-  theme::{ColorStyle, Effect, Style},
+  theme::ColorStyle,
   traits::*,
   utils::markup::StyledString,
   view::{View, ViewWrapper},
@@ -213,13 +213,18 @@ fn choices(siv: &mut Cursive) {
     &package.application.description,
   ] {
     if !text.is_empty() {
-      content.add_child(TextView::new(text.clone()));
+      content.add_child(TextView::new(presentation::description(text.clone())));
     }
   }
   content.add_child(DummyView.fixed_height(1));
   if let Action::Uninstall { root, .. } = &state.action {
-    content.add_child(TextView::new(format!("Uninstall from {}", root.display())));
-    content.add_child(TextView::new("Application settings are preserved unless selected below."));
+    content.add_child(TextView::new(presentation::description(format!(
+      "Uninstall from {}",
+      root.display()
+    ))));
+    content.add_child(TextView::new(presentation::description(
+      "Application settings are preserved unless selected below.",
+    )));
     let checkbox = Checkbox::labelled("Remove application settings")
       .with_enabled(!state.options.settings_explicit)
       .with_checked(state.options.remove_settings)
@@ -268,24 +273,15 @@ fn choices(siv: &mut Cursive) {
         if previous_group.is_some() {
           content.add_child(DummyView.fixed_height(1));
         }
-        let heading = match group {
-          0 => "Installation".to_owned(),
-          1 => "Commands".to_owned(),
-          2 => "Shortcuts".to_owned(),
-          _ => "Options".to_owned(),
-        };
-        content.add_child(TextView::new(StyledString::styled(
-          heading,
-          Style::from(ColorStyle::new(
-            cursive::theme::Color::Rgb(119, 205, 236),
-            presentation::SURFACE,
-          ))
-          .combine(Effect::Bold),
-        )));
-        content.add_child(DummyView.fixed_height(1));
         previous_group = Some(group);
       }
-      let label = input.prompt.as_deref().unwrap_or(&name).to_string();
+      // Use the concise built-in form caption without replacing prompts owned
+      // by an application or changing the plain-mode question wording.
+      let label = if name == "install-dir" && !package.runtime.inputs.contains_key(&name) {
+        "Install to:".to_owned()
+      } else {
+        input.prompt.as_deref().unwrap_or(&name).to_owned()
+      };
       let raw = state.values.get(&name).and_then(|v| config::text(v).ok()).unwrap_or_default();
       let raw = config::expand(&raw, &state.values).unwrap_or(raw);
       let explicit = state.options.values.contains_key(&name)
@@ -304,7 +300,7 @@ fn choices(siv: &mut Cursive) {
           .full_width(),
         );
       } else {
-        content.add_child(TextView::new(label));
+        content.add_child(TextView::new(presentation::description(label)));
         let view = if input.kind == "choice" {
           let mut choices = SelectView::<String>::new();
           choices.add_item("Choose…", String::new());
@@ -500,7 +496,9 @@ fn refresh_dependencies_with_path_check(siv: &mut Cursive, check_path: impl FnOn
   if cfg!(windows) && !already_on_path && options.values.contains_key("add-to-path") {
     status.push_str("\nThis option is locked by the command-line setting.");
   }
-  siv.call_on_name("path-status", |view: &mut TextView| view.set_content(status));
+  siv.call_on_name("path-status", |view: &mut TextView| {
+    view.set_content(presentation::description(status))
+  });
 }
 fn start(siv: &mut Cursive) {
   let state = siv.user_data::<State>().unwrap();

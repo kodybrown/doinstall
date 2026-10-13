@@ -105,7 +105,12 @@ impl Backend for Recording {
 
 #[test]
 fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
-  let (_temp, mut siv, _root) = fixture();
+  let (_temp, mut siv, root) = fixture();
+  if let Action::Install { package, .. } = &mut siv.user_data::<State>().unwrap().action {
+    package.application.description = "An application packaged by DoInstall.".into();
+  }
+  siv.pop_layer();
+  choices(&mut siv);
   let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 40))));
   let mut runner = siv.runner(Box::new(Recording(screen.clone())));
   runner.refresh();
@@ -124,6 +129,26 @@ fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
       !screen.cells.iter().any(|c| "┤├┌┐└┘─".contains(c.text)),
       "Stock borders or title separators leaked into form"
     );
+    let caption = screen.find("Install to:");
+    let checkbox = screen.find("[ ] Place an additional command");
+    assert_eq!(checkbox.x, caption.x);
+    assert_eq!(checkbox.x, screen.find(&root.to_string_lossy()).x);
+    assert_eq!(screen.cell(caption).colors.front, Color::Rgb(157, 174, 195));
+    assert_eq!(
+      screen.cell(screen.find("An application packaged")).colors.front,
+      Color::Rgb(157, 174, 195)
+    );
+    assert_eq!(
+      screen.cell(screen.find("Place an additional command")).colors.front,
+      Color::Rgb(235, 241, 248)
+    );
+    for row in screen.cells.chunks(screen.size.x) {
+      let text: String = row.iter().map(|cell| cell.text).collect();
+      assert!(
+        !["Installation", "Commands", "Shortcuts", "Options"].contains(&text.trim()),
+        "Generated group headings must be absent"
+      );
+    }
     screen.snapshot("choices");
     normal
   };
@@ -142,8 +167,10 @@ fn colored_form_buttons_checkbox_focus_and_mouse_use_real_controls() {
   let label_position = {
     let screen = screen.lock().unwrap();
     let label = screen.find("Place an additional command");
-    assert_eq!(screen.cell(label).colors.back, Color::Rgb(119, 205, 236));
-    assert_eq!(screen.cell(Vec2::new(label.x - 6, label.y)).text, '>');
+    assert_eq!(screen.cell(label).colors.back, Color::Rgb(57, 90, 128));
+    assert_eq!(screen.cell(label).colors.front, Color::Rgb(235, 241, 248));
+    assert_eq!(screen.cell(Vec2::new(label.x - 4, label.y)).text, '[');
+    assert_eq!(label.x - 4, screen.find("Install to:").x);
     screen.snapshot("checkbox-focused");
     label
   };
@@ -323,7 +350,7 @@ fn explicit_groups_reorder_controls_stably_without_changing_values() {
   assert_eq!(values["early"], false);
   assert_eq!(values["channel"], "stable");
   let screen = screen.lock().unwrap();
-  assert!(screen.find("Channel").y < screen.find("Commands").y);
+  assert!(screen.find("Channel").y < screen.find("Grouped option").y);
   assert!(screen.find("Grouped option").y < screen.find("Another option").y);
 }
 

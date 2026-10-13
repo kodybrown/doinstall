@@ -95,9 +95,9 @@ Inputs support `string`, `path`, `boolean`, and `choice`, with `required`, `prom
 `default`, and `choices`. Optional `group-index` is a nonnegative integer for
 interactive presentation only. Equal indices appear together, groups sort in
 ascending order, and controls retain their existing order within each group.
-Built-in defaults are 0 (Installation), 1 (Commands), and 2 (Shortcuts).
-Application inputs default to 3 (Options); further groups use the Options heading
-and separate spacing. An application input can join a built-in group by using its
+Built-in defaults are 0 (installation location), 1 (command options), and 2 (shortcuts).
+Application inputs default to 3. Groups are separated by blank spacing without
+generated headings. An application input can join a built-in group by using its
 index. Grouping never changes input precedence, validation, dependencies, or the
 order of plain-mode prompts. Values are resolved in this order, highest first:
 
@@ -145,7 +145,11 @@ cells for the side edges, half-block title caps, and a one-column/half-row offse
 shadow. Popup text has one blank surface row above and below it. Headers, footers, normal/focused buttons,
 fields, warnings, errors, and cancellation/validation dialogs share that theme.
 Buttons use padded labels without angle brackets. Focused checkboxes highlight
-the complete label and show a `>` marker; clicking the row toggles the checkbox.
+the complete row without a marker or indentation; clicking the row toggles the checkbox.
+Enabled checkbox labels are white, with a darker focused row for contrast.
+Descriptions, PATH explanations, and field captions use subdued gray; disabled
+controls remain muted. The built-in installation caption is `Install to:`;
+application-defined prompts and plain-mode wording remain authoritative.
 Choices show `Tab:move  Space:toggle Esc:cancel` on the button row; narrower
 terminals use shorter hints on that same row without covering the buttons.
 Tab/Shift+Tab navigation remains available even when the compact hint omits it.

@@ -100,6 +100,24 @@
   and terminal restoration using the temporary hello preview with PATH disabled.
   Native Linux/macOS/Windows ARM64 acceptance remains pending.
 
+### 2026-10-13 Simplify option groups, checkbox alignment, and text hierarchy
+
+- Remove generated Installation, Commands, Shortcuts, and Options headings while
+  retaining group ordering and blank separation. Use `Install to:` for the
+  built-in form caption without replacing application-owned prompts or changing
+  plain-mode questions.
+- Remove checkbox focus markers and their reserved indentation. Align checkbox
+  squares with text fields, retain full-row focus and clicking, and use white
+  enabled checkbox labels on a darker focused surface for contrast. Descriptions,
+  PATH explanations, and field captions use subdued gray; disabled controls
+  remain muted. Apply the same text hierarchy to uninstall choices.
+- Verification: release build, build.cmd verify (81 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Updated actual Cursive rendering checks cover header removal, caption wording,
+  label/description colors, checkbox alignment, focus, and row clicks; existing
+  grouping, resize, cancellation, PATH policy, and worker checks remain passing.
+  Native Linux/macOS/Windows ARM64 acceptance remains pending.
+
 ### 2026-10-12 Deliver prebuilt tools with a declarative dotask adapter
 
 - Add optional `adapters/dotask/assemble.task`, invoking the builder directly

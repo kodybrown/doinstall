@@ -3,6 +3,7 @@ use super::{refresh_dependencies, State};
 use cursive::{
   event::{Callback, Event, EventResult, Key, MouseButton, MouseEvent},
   theme::{BorderStyle, Color, ColorStyle, Effect, PaletteColor, PaletteStyle, Style, Theme},
+  utils::markup::StyledString,
   view::{View, ViewWrapper},
   views::{BoxedView, Dialog, DummyView, PaddedView, TextArea, ThemedView},
   Printer, Vec2,
@@ -21,6 +22,10 @@ const SHADOW: Color = Color::Rgb(5, 9, 15);
 pub(super) const WARNING: Color = Color::Rgb(255, 203, 112);
 pub(super) const ERROR: Color = Color::Rgb(255, 143, 151);
 pub(super) const SUCCESS: Color = Color::Rgb(139, 222, 177);
+
+pub(super) fn description(text: impl Into<String>) -> StyledString {
+  StyledString::styled(text.into(), ColorStyle::new(MUTED, SURFACE))
+}
 
 pub(super) fn theme() -> Theme {
   let mut theme = Theme {
@@ -183,22 +188,22 @@ impl ViewWrapper for Form {
   }
 }
 
-/// Reserve a marker column and highlight the complete labelled checkbox. The
-/// wrapper forwards focus, Space/Enter and mouse handling to the stock control.
+/// Highlight the complete labelled checkbox without adding an indent or marker.
+/// The wrapper forwards focus and keyboard handling to the stock control.
 pub(super) struct FocusRow<V> {
-  view: PaddedView<V>,
+  view: V,
   size: Vec2,
 }
 impl<V> FocusRow<V> {
   pub(super) fn new(view: V) -> Self {
     Self {
-      view: PaddedView::lrtb(2, 0, 0, 0, view),
+      view,
       size: Vec2::zero(),
     }
   }
 }
 impl<V: View> ViewWrapper for FocusRow<V> {
-  cursive::wrap_impl!(self.view: PaddedView<V>);
+  cursive::wrap_impl!(self.view: V);
   fn wrap_layout(&mut self, size: Vec2) {
     self.size = size;
     self.view.layout(size);
@@ -210,8 +215,8 @@ impl<V: View> ViewWrapper for FocusRow<V> {
       offset,
     } = event
     {
-      // Make the whole labelled row a checkbox target, including the focus
-      // marker; EnableableView still refuses toggles for locked options.
+      // The whole labelled row is a checkbox target; EnableableView still
+      // refuses toggles for locked options.
       if position.fits_in_rect(offset, self.size) {
         return self.view.on_event(Event::Char(' '));
       }
@@ -220,9 +225,13 @@ impl<V: View> ViewWrapper for FocusRow<V> {
   }
   fn wrap_draw(&self, printer: &Printer) {
     let focused = printer.focused && printer.enabled;
+    let mut theme = theme();
+    // A darker accent preserves contrast for the requested white checkbox
+    // labels. Focus is expressed by the entire row, never a separate marker.
+    theme.palette[PaletteStyle::Highlight] = Style::from(ColorStyle::new(TEXT, BUTTON)).combine(Effect::Bold);
+    let printer = printer.theme(&theme);
     printer.with_selection(focused, |p| {
       p.print_hline((0, 0), p.size.x, " ");
-      p.print((0, 0), if focused { ">" } else { " " });
       self.view.draw(p);
     });
   }
