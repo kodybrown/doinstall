@@ -159,3 +159,31 @@
   ZIP assembly without running the destination engine. Cargo output remains
   C:/tmp/_rust/doinstall/target. Native Debian/Ubuntu/macOS/ARM64 acceptance remains
   pending; fixtures use disposable directories and do not provision live servers.
+
+### 2026-10-13 Refresh the console form with an internal default theme
+
+- Retain Cursive control behavior with a dark backdrop, contrasting form,
+  space-filled colored edges, shadow, header/footer surfaces, and filled normal
+  and focused buttons. Button labels use one leading/trailing space without
+  angle brackets. Apply the same presentation to install/uninstall, validation,
+  cancellation confirmation, warnings, errors, and summaries.
+- Add optional `runtime.theme: default` as a theme identifier, with no inline
+  color, padding, size, position, layout, or behavior configuration. External
+  theme files remain unsupported. Input `group-index` groups related options
+  with stable ordering and fixed spacing; built-in location, command, and
+  shortcut groups have defaults. Omit unused presentation metadata from package
+  serialization to retain existing content identity.
+- Highlight complete focused checkbox labels with a visible marker and make
+  their rows clickable. Disable the underlying controls as well as their wrappers
+  so Tab skips dependent and CLI-locked options. Soft-wrap Unicode input values
+  without inserting newlines, preserve edits/cursors on resize, and bound editor
+  height with cursor-following scrolling. Keep progress text-only and wrap long
+  summaries. Preserve plain/unattended output, receipts, and safe cancellation.
+- Verification: release build, build.cmd verify (76 Rust tests), formatting,
+  clippy, shim integrity/PE checks, and git diff --check passed on Windows x64.
+  Captured actual Cursive cells/colors for focus, button, warning/error, summary,
+  grouping, Unicode editing, and resize regressions. Native Windows terminal
+  acceptance passed using temporary hello preview roots with PATH changes disabled,
+  checking color rendering, navigation, installation/summary, cancellation,
+  terminal restoration, and cleanup. Native Linux/macOS/Windows ARM64 acceptance
+  remains pending. No active installation changes, integration, push, or publication.

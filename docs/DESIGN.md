@@ -54,7 +54,7 @@ maps project settings to that document explicitly; it does not make the installe
 depend on source-project configuration. Application name, optional copyright,
 and description own the dialog title/banner. Interactive execution uses Cursive's
 standard controls and appearance, with choices, operation progress, and summary
-states. No custom theme is implemented. Runtime `confirm-cancel` defaults to true and
+states with an internal default theme. Runtime `confirm-cancel` defaults to true and
 asks before canceling choices or requesting cancellation during work. `--plain` retains indented line prompts
 and separators sized to the visible console width; unattended output stays plain. Shortcut declarations grant
 location permissions, while defaults set initial answers. The additional command
@@ -189,7 +189,7 @@ not a claim of byte-identical compiler output. Shim source changes require LLVM
 rebuilds and native acceptance; the shim rebuild CI job verifies generated hashes
 but does not currently compare rebuilt assets against committed bytes.
 
-## Plain Cursive presentation
+## Themed Cursive presentation
 
 Cursive uses only its Crossterm backend, compiled into the executable without an
 ncurses or language-runtime dependency. Standard controls own editing, selection,
@@ -206,5 +206,24 @@ scrolls at small sizes and preserves its fields behind a minimum-size message.
 Runtime `confirm-cancel` defaults to true. Confirmation is modal, defaults to No,
 and does not signal the worker before Yes. Keyboard and external Ctrl+C requests
 use the same policy. Completing work removes any pending confirmation and shows
-the result; closing a summary does not ask. Preferred sizes and theme YAML remain
-unimplemented.
+the result; closing a summary does not ask.
+
+`runtime.theme` is a strict theme identifier; only `default` is accepted. Colors,
+padding, sizing, positioning and layout are internal rules, not package settings.
+External theme YAML loading remains deferred. Optional input `group-index` is
+presentation metadata: stable sorting groups related controls without changing
+resolution or plain-mode prompt order. Both additions omit unused defaults when
+serialized to preserve package content identity.
+
+The form wrapper paints space-filled edges and a header/footer while Cursive's
+Dialog owns geometry, focus, buttons and hit testing. A separate body palette
+allows padded raw button labels to have normal/focused background fills without
+coloring ordinary text as buttons. Validation, cancellation, warnings and errors
+use the same presentation. Checkbox rows add a focus marker, full-label highlight
+and row clicking while retaining the stock checkbox state and enablement checks.
+
+TextArea supplies soft wrapping and Unicode cursor editing for single values.
+The wrapper refuses typed newlines, preserves Tab navigation, and limits height
+to four rows with cursor-following scrolling. Editing invalidates layout so fields
+can grow or shrink with their content. Progress remains phase text, and summary
+text wraps inside the scrolling body. No spinner, progress bar or percent is added.

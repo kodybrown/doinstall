@@ -234,6 +234,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
     result.insert(
       name.into(),
       Input {
+        group_index: None,
         kind: "boolean".into(),
         required: true,
         prompt: Some(name.replace('-', " ")),
@@ -245,6 +246,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
   result.insert(
     "shortcut-name".into(),
     Input {
+      group_index: None,
       kind: "string".into(),
       required: true,
       prompt: Some("Shortcut name (without extension)".into()),
@@ -256,6 +258,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
     result.insert(
       name.into(),
       Input {
+        group_index: None,
         kind: "path".into(),
         required: name == "install-dir",
         prompt: Some(name.replace('-', " ")),

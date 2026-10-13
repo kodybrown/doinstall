@@ -42,6 +42,7 @@ platform: windows
 architecture: x64
 payload: ./published
 runtime:
+  theme: default           # optional; currently the only supported theme
   interactive: true
   confirm-cancel: true      # dialog cancellation confirmation; defaults to true
   commands:
@@ -62,6 +63,7 @@ runtime:
       required: true
       default: stable
       prompt: Choose a channel
+      group-index: 3       # optional visual group; does not affect value resolution
   defaults:
     common:
       additional-command: false
@@ -90,7 +92,14 @@ payloads are also rejected. Executable permissions are preserved on Unix.
 `installer.yaml` and `installation.yaml` are reserved at each payload's root.
 
 Inputs support `string`, `path`, `boolean`, and `choice`, with `required`, `prompt`,
-`default`, and `choices`. Values are resolved in this order, highest first:
+`default`, and `choices`. Optional `group-index` is a nonnegative integer for
+interactive presentation only. Equal indices appear together, groups sort in
+ascending order, and controls retain their existing order within each group.
+Built-in defaults are 0 (Installation), 1 (Commands), and 2 (Shortcuts).
+Application inputs default to 3 (Options); further groups use the Options heading
+and separate spacing. An application input can join a built-in group by using its
+index. Grouping never changes input precedence, validation, dependencies, or the
+order of plain-mode prompts. Values are resolved in this order, highest first:
 
 1. CLI overrides (`--set NAME=VALUE`).
 2. Explicit YAML `values`.
@@ -118,22 +127,39 @@ exit code. Interactive answers replace defaults; CLI-supplied inputs are read-on
 in the dialog and skip their individual plain-mode prompts. Automation does not
 require a second confirmation flag.
 
-Interactive installation uses a standard Cursive dialog with three states:
+Interactive installation uses a themed Cursive form with three states:
 installation choices, operation progress, and a summary with a Close button.
 Uninstall uses the same flow, offering removal of declared settings unless a CLI
 settings flag already supplies the policy. The title, copyright, and description
-come from application metadata. No custom theme or sizing YAML fields are supported.
+come from application metadata; the choices title also includes the version.
+`runtime.theme` selects a theme by identifier, defaulting to `default`. Only this
+internal theme is supported now. Custom `theme.yaml` files are deferred, and
+unknown identifiers or file paths are rejected. The installer YAML cannot specify
+individual colors, padding, dimensions, position, layout, or UI behavior settings.
+The separate `confirm-cancel` runtime policy described below remains supported.
+Default theme selection and omitted group indices are omitted from serialized
+packages, so unused presentation metadata does not change package snapshots.
+
+The default theme uses a dark backdrop, contrasting form surface, colored space
+cells for the form edge, and a shadow. Headers, footers, normal/focused buttons,
+fields, warnings, errors, and cancellation/validation dialogs share that theme.
+Buttons use padded labels without angle brackets. Focused checkboxes highlight
+the complete label and show a `>` marker; clicking the row toggles the checkbox.
 
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
 retaining their values. Invalid inputs keep the choices screen open with a
 validation diagnostic. The dialog grows horizontally with the console, leaving
-a small outer margin; text fields use the additional width. Height follows the
+a small outer margin; text fields use the additional width. Long input values
+soft-wrap without inserting newlines into their stored values. Editors grow to
+at most four rows, then scroll to keep the cursor visible. Enter does not add a
+newline; Tab/Shift+Tab continues navigating controls. Unicode content and cursor
+positions survive resizing. Height follows the
 content up to the available space. Configuration and result bodies scroll when
 space is limited. Below the minimum usable area (approximately 50 columns by 14 rows,
 including dialog margins), a resize message replaces the view without losing
 field values. Resizing during work does not suspend filesystem operations.
-Progress names the current operation; no overall percentage is claimed. Summary
+Progress names the current operation, with no spinner, bar, or percentage. Summary
 paths and errors wrap, and Close restores the terminal and prints operation
 messages in scrollback. Cancellation returns 130, errors return 1, success 0.
 

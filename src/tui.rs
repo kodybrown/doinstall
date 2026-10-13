@@ -1,19 +1,23 @@
 //! A small Cursive form over the existing installer, not a second installation engine.
+mod presentation;
 use crate::{
   config::{self, Options},
   console::{self, Operation, OperationEvent},
   engine,
-  model::{Input, Package},
+  model::{Input, Package, ThemeName},
   user_path,
 };
 use anyhow::{anyhow, Result};
 use cursive::{
   event::{Event, EventResult, Key},
+  theme::{ColorStyle, Effect, Style},
   traits::*,
+  utils::markup::StyledString,
   view::{View, ViewWrapper},
-  views::{BoxedView, Checkbox, Dialog, EditView, EnableableView, LinearLayout, SelectView, TextView},
+  views::{BoxedView, Checkbox, Dialog, DummyView, EnableableView, LinearLayout, SelectView, TextView},
   Cursive, Printer, Vec2,
 };
+use presentation::{FocusRow, Form, WrappedInput};
 use serde_json::Value;
 use std::{
   collections::BTreeMap,
@@ -57,13 +61,13 @@ struct State {
   interrupt: Arc<AtomicBool>,
   confirming_cancel: bool,
   stage: Stage,
-  messages: Vec<String>,
+  messages: Vec<(String, bool)>,
   outcome: Option<Result<()>>,
   worker: Option<JoinHandle<Result<()>>>,
 }
 
-// Keep the standard dialog/control appearance. Size to the current console,
-// retaining the actual view and field values behind the too-small notice.
+// Size the themed form to the console, retaining its controls and values behind
+// the too-small notice. Presentation settings are internal, not package options.
 struct SizedDialog {
   view: BoxedView,
   fits: bool,
@@ -81,7 +85,7 @@ impl ViewWrapper for SizedDialog {
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
     self.fits = available.x >= 48 && available.y >= 12;
     if self.fits {
-      // Fill the usable width so full-width EditViews grow on maximize. Keep
+      // Fill the usable width so wrapped text fields grow on maximize. Keep
       // a small outer margin and use only the height the content needs; tall
       // forms may expand while short progress/summary dialogs remain compact.
       let usable = Vec2::new(available.x.saturating_sub(4).max(48), available.y.saturating_sub(2).max(12));
@@ -155,12 +159,19 @@ fn run(action: Action, options: Options, values: BTreeMap<String, Value>) -> Res
     }
   }
   // Cursive has restored the terminal before printing a durable scrollback result.
-  for message in &state.messages {
-    console::message(message);
+  for (message, warning) in &state.messages {
+    if *warning {
+      console::diagnostic(message);
+    } else {
+      console::message(message);
+    }
   }
   state.outcome.unwrap_or_else(|| Err(console::Canceled.into()))
 }
 fn setup(siv: &mut Cursive, action: Action, options: Options, values: BTreeMap<String, Value>) {
+  siv.set_theme(match action.package().runtime.theme {
+    ThemeName::Default => presentation::theme(),
+  });
   let mut inputs = config::standard_inputs();
   inputs.extend(action.package().runtime.inputs.clone());
   let derived_bin = !values.contains_key("bin-dir");
@@ -190,7 +201,7 @@ fn setup(siv: &mut Cursive, action: Action, options: Options, values: BTreeMap<S
 fn choices(siv: &mut Cursive) {
   let state = siv.user_data::<State>().unwrap();
   let package = state.action.package();
-  let title = package.application.name.clone();
+  let title = format!("{} · {}", package.application.name, package.application.version);
   let mut content = LinearLayout::vertical();
   for text in [
     &package.application.copyright,
@@ -200,19 +211,15 @@ fn choices(siv: &mut Cursive) {
       content.add_child(TextView::new(text.clone()));
     }
   }
-  content.add_child(TextView::new(""));
+  content.add_child(DummyView.fixed_height(1));
   if let Action::Uninstall { root, .. } = &state.action {
     content.add_child(TextView::new(format!("Uninstall from {}", root.display())));
     content.add_child(TextView::new("Application settings are preserved unless selected below."));
-    let checkbox = Checkbox::new()
+    let checkbox = Checkbox::labelled("Remove application settings")
       .with_enabled(!state.options.settings_explicit)
       .with_checked(state.options.remove_settings)
       .with_name("remove-settings");
-    content.add_child(
-      LinearLayout::horizontal()
-        .child(checkbox)
-        .child(TextView::new(" Remove application settings")),
-    );
+    content.add_child(FocusRow::new(checkbox).full_width());
   } else {
     let mut names = vec![
       "install-dir",
@@ -235,33 +242,61 @@ fn choices(siv: &mut Cursive) {
         .filter(|name| !names_contains_builtin(name)),
     );
     // Permission controls appear only when this package declares that capability.
-    let fields: Vec<String> = names
+    let mut fields: Vec<String> = names
       .into_iter()
       .filter(|name| visible(package, name))
       .filter(|name| *name != "confirm-install" && state.inputs[*name].prompt.is_some())
       .map(str::to_owned)
       .collect();
+    fields.sort_by_key(|name| group_index(name, &state.inputs[name]));
     state.fields = fields.clone();
+    let mut previous_group = None;
+    let mut path_status_added = false;
     for name in fields {
       let input = &state.inputs[&name];
+      let group = group_index(&name, input);
+      if previous_group != Some(group) {
+        if previous_group == Some(1) {
+          content.add_child(TextView::new("").with_name("path-status"));
+          path_status_added = true;
+        }
+        if previous_group.is_some() {
+          content.add_child(DummyView.fixed_height(1));
+        }
+        let heading = match group {
+          0 => "Installation".to_owned(),
+          1 => "Commands".to_owned(),
+          2 => "Shortcuts".to_owned(),
+          _ => "Options".to_owned(),
+        };
+        content.add_child(TextView::new(StyledString::styled(
+          heading,
+          Style::from(ColorStyle::new(
+            cursive::theme::Color::Rgb(119, 205, 236),
+            presentation::SURFACE,
+          ))
+          .combine(Effect::Bold),
+        )));
+        content.add_child(DummyView.fixed_height(1));
+        previous_group = Some(group);
+      }
       let label = input.prompt.as_deref().unwrap_or(&name).to_string();
       let raw = state.values.get(&name).and_then(|v| config::text(v).ok()).unwrap_or_default();
       let raw = config::expand(&raw, &state.values).unwrap_or(raw);
       let explicit = state.options.values.contains_key(&name)
         || (name == "additional-command" && state.options.values.contains_key("bin-dir"));
       if input.kind == "boolean" {
-        let checkbox = Checkbox::new()
+        let checkbox = Checkbox::labelled(label)
           .with_checked(raw == "true")
           .on_change(|s, _| refresh_dependencies(s))
           .with_name(name.clone());
         content.add_child(
-          LinearLayout::horizontal()
-            .child(
-              EnableableView::new(checkbox)
-                .with_enabled(!explicit)
-                .with_name(format!("enabled-{name}")),
-            )
-            .child(TextView::new(format!(" {label}"))),
+          FocusRow::new(
+            EnableableView::new(checkbox)
+              .with_enabled(!explicit)
+              .with_name(format!("enabled-{name}")),
+          )
+          .full_width(),
         );
       } else {
         content.add_child(TextView::new(label));
@@ -276,18 +311,8 @@ fn choices(siv: &mut Cursive) {
             choices.selected(selected).with_name(name.clone()).scrollable().max_height(4),
           ))
         } else {
-          let key = name.clone();
           BoxedView::new(Box::new(
-            EditView::new()
-              .content(raw)
-              .on_edit(move |s, _, _| {
-                if key == "bin-dir" {
-                  s.user_data::<State>().unwrap().derived_bin = false;
-                }
-                refresh_dependencies(s);
-              })
-              .with_name(name.clone())
-              .full_width(),
+            WrappedInput::new(name.clone(), raw).with_name(name.clone()).full_width(),
           ))
         };
         content.add_child(
@@ -295,24 +320,37 @@ fn choices(siv: &mut Cursive) {
             .with_enabled(!explicit)
             .with_name(format!("enabled-{name}")),
         );
-        content.add_child(TextView::new(""));
+        content.add_child(DummyView.fixed_height(1));
       }
     }
-    content.add_child(TextView::new("").with_name("path-status"));
+    if !path_status_added {
+      content.add_child(TextView::new("").with_name("path-status"));
+    }
   }
+  content.add_child(DummyView.fixed_height(1));
   content.add_child(TextView::new("Tab / Shift+Tab: move   Space: toggle   Esc: cancel"));
   let action_label = if state.action.uninstall() {
     "Uninstall"
   } else {
     "Install"
   };
-  let dialog = Dialog::around(content.scrollable())
-    .title(title)
-    .button(action_label, start)
-    .button("Cancel", cancel_or_close)
-    .with_name("installer-dialog");
+  let dialog = Form::new(
+    Dialog::around(content.scrollable())
+      .title(title)
+      .button(action_label, start)
+      .button("Cancel", cancel_or_close),
+  )
+  .with_name("installer-dialog");
   siv.add_layer(SizedDialog::new(dialog));
   refresh_dependencies(siv);
+}
+fn group_index(name: &str, input: &Input) -> u32 {
+  input.group_index.unwrap_or(match name {
+    "install-dir" => 0,
+    "additional-command" | "bin-dir" | "add-to-path" => 1,
+    name if names_contains_builtin(name) => 2,
+    _ => 3,
+  })
 }
 fn names_contains_builtin(name: &str) -> bool {
   [
@@ -354,7 +392,7 @@ fn form_values(siv: &mut Cursive) -> BTreeMap<String, Value> {
       "choice" => siv.call_on_name(&name, |view: &mut SelectView<String>| {
         Value::String(view.selection().map(|v| (*v).clone()).unwrap_or_default())
       }),
-      _ => siv.call_on_name(&name, |view: &mut EditView| Value::String(view.get_content().to_string())),
+      _ => siv.call_on_name(&name, |view: &mut WrappedInput| Value::String(view.get_content().to_string())),
     };
     if let Some(value) = value {
       values.insert(name, value);
@@ -376,8 +414,8 @@ fn refresh_dependencies(siv: &mut Cursive) {
     && let Some(parent) = root.parent()
   {
     let suggested = parent.to_string_lossy().to_string();
-    // set_content returns its callback; do not execute it for a programmatic default.
-    siv.call_on_name("bin-dir", |view: &mut EditView| {
+    // Do not execute the edit callback for a programmatically derived default.
+    siv.call_on_name("bin-dir", |view: &mut WrappedInput| {
       let _ = view.set_content(suggested.clone());
     });
     values.insert("bin-dir".into(), suggested.into());
@@ -398,6 +436,20 @@ fn refresh_dependencies(siv: &mut Cursive) {
     } && !options.values.contains_key(&name)
       && !(name == "additional-command" && options.values.contains_key("bin-dir"));
     let wrapper = format!("enabled-{name}");
+    // EnableableView blocks events and supplies disabled colors, but does not
+    // reject focus. Disable the real controls too, so Tab skips locked options.
+    let kind = siv.user_data::<State>().unwrap().inputs[&name].kind.clone();
+    match kind.as_str() {
+      "boolean" => {
+        siv.call_on_name(&name, |view: &mut Checkbox| view.set_enabled(allowed));
+      }
+      "choice" => {
+        siv.call_on_name(&name, |view: &mut SelectView<String>| view.set_enabled(allowed));
+      }
+      _ => {
+        siv.call_on_name(&name, |view: &mut WrappedInput| view.set_enabled(allowed));
+      }
+    }
     if siv
       .call_on_name(&wrapper, |view: &mut EnableableView<BoxedView>| view.set_enabled(allowed))
       .is_none()
@@ -439,9 +491,19 @@ fn start(siv: &mut Cursive) {
     if let Err(error) =
       config::resolve(action.package(), &options).and_then(|values| config::path(&values, "install-dir").map(|_| ()))
     {
-      siv.add_layer(SizedDialog::new(Dialog::info(format!(
-        "Check installation settings:\n{error:#}"
-      ))));
+      siv.add_layer(SizedDialog::new(Form::new(
+        Dialog::around(
+          TextView::new(StyledString::styled(
+            format!("Check installation settings:\n{error:#}"),
+            ColorStyle::new(presentation::ERROR, presentation::SURFACE),
+          ))
+          .scrollable(),
+        )
+        .title("Check installation settings")
+        .button("OK", |s| {
+          s.pop_layer();
+        }),
+      )));
       return;
     }
   }
@@ -450,21 +512,23 @@ fn start(siv: &mut Cursive) {
   let cancel = state.cancel.clone();
   let title = action.package().application.name.clone();
   siv.pop_layer();
-  siv.add_layer(SizedDialog::new(
+  siv.add_layer(SizedDialog::new(Form::new(
     Dialog::around(
       LinearLayout::vertical()
         .child(TextView::new("Preparing…").with_name("progress"))
+        .child(TextView::new("").with_name("working-warning"))
         .child(
           TextView::new(
             "Cancellation stops before destination changes begin.\nOnce changes begin, the operation finishes safely.",
           )
           .scrollable()
           .max_height(4),
-        ),
+        )
+        .scrollable(),
     )
     .title(title)
     .button("Cancel", cancel_or_close),
-  ));
+  )));
   let sink = siv.cb_sink().clone();
   let events = sink.clone();
   let operation = Operation {
@@ -496,8 +560,17 @@ fn report(siv: &mut Cursive, event: OperationEvent) {
     OperationEvent::Phase(label) => {
       siv.call_on_name("progress", |view: &mut TextView| view.set_content(label));
     }
-    OperationEvent::Message(message) | OperationEvent::Warning(message) => {
-      siv.user_data::<State>().unwrap().messages.push(message);
+    OperationEvent::Message(message) => {
+      siv.user_data::<State>().unwrap().messages.push((message, false));
+    }
+    OperationEvent::Warning(message) => {
+      siv.call_on_name("working-warning", |view: &mut TextView| {
+        view.set_content(StyledString::styled(
+          format!("Warning: {message}"),
+          ColorStyle::new(presentation::WARNING, presentation::SURFACE),
+        ));
+      });
+      siv.user_data::<State>().unwrap().messages.push((message, true));
     }
   }
 }
@@ -510,11 +583,23 @@ fn finished(siv: &mut Cursive, outcome: Result<()>) {
     Err(error) => format!("Installer error:\n{error:#}\n\nIf activation or removal was interrupted, retry with the same package and locations."),
   };
   let title = state.action.package().application.name.clone();
-  let summary = if state.messages.is_empty() {
-    result
-  } else {
-    format!("{result}\n\n{}", state.messages.join("\n\n"))
+  let result_color = match &outcome {
+    Ok(()) => presentation::SUCCESS,
+    Err(error) if error.is::<console::Canceled>() => presentation::WARNING,
+    Err(_) => presentation::ERROR,
   };
+  let mut summary = StyledString::styled(result, ColorStyle::new(result_color, presentation::SURFACE));
+  for (message, warning) in &state.messages {
+    summary.append_plain("\n\n");
+    if *warning {
+      summary.append_styled(
+        format!("Warning: {message}"),
+        ColorStyle::new(presentation::WARNING, presentation::SURFACE),
+      );
+    } else {
+      summary.append_plain(message);
+    }
+  }
   state.outcome = Some(outcome);
   // The worker can finish while confirmation is open. Remove the modal before
   // replacing progress, so a stale Yes cannot act on the completed operation.
@@ -524,11 +609,11 @@ fn finished(siv: &mut Cursive, outcome: Result<()>) {
     siv.pop_layer();
   }
   siv.pop_layer();
-  siv.add_layer(SizedDialog::new(
+  siv.add_layer(SizedDialog::new(Form::new(
     Dialog::around(TextView::new(summary).scrollable())
       .title(format!("{title} — Summary"))
       .button("Close", |s| s.quit()),
-  ));
+  )));
 }
 fn handle_interrupt(siv: &mut Cursive) {
   if siv
@@ -570,11 +655,16 @@ fn cancel_or_close(siv: &mut Cursive) {
     // Keep this modal compact and usable below the form's minimum size, so
     // the resize notice does not prevent the user from confirming cancellation.
     siv.add_layer(
-      Dialog::text(question)
+      Form::new(
+        Dialog::text(StyledString::styled(
+          question,
+          ColorStyle::new(presentation::WARNING, presentation::SURFACE),
+        ))
         .title("Confirm cancellation")
         .button("No", dismiss_cancel)
-        .button("Yes", confirm_cancel)
-        .with_name("cancel-confirmation"),
+        .button("Yes", confirm_cancel),
+      )
+      .with_name("cancel-confirmation"),
     );
   } else {
     perform_cancel(siv);
@@ -609,6 +699,7 @@ fn perform_cancel(siv: &mut Cursive) {
 
 #[cfg(test)]
 mod tests {
+  mod rendering;
   use super::*;
   use cursive::{
     backend::{Backend, Dummy},
@@ -721,25 +812,26 @@ mod tests {
     runner.focus_name("install-dir").unwrap();
     runner.on_event(Event::Key(Key::Left));
     let cursor = runner
-      .call_on_name("install-dir", |view: &mut EditView| view.get_cursor())
+      .call_on_name("install-dir", |view: &mut WrappedInput| view.get_cursor())
       .unwrap();
     let values = form_values(&mut runner);
-    let narrow_fill = output.lock().unwrap().chars().filter(|c| *c == '_').count();
+    let narrow = runner.call_on_name("install-dir", |view: &mut WrappedInput| view.size).unwrap();
     output.lock().unwrap().clear();
     size.store(160, Ordering::SeqCst);
     runner.on_event(Event::WindowResize);
     runner.refresh();
-    let wide_fill = output.lock().unwrap().chars().filter(|c| *c == '_').count();
-    // Standard EditView fillers prove that the actual controls, not just their
-    // enclosing border, gained usable columns after the resize event.
+    let wide = runner.call_on_name("install-dir", |view: &mut WrappedInput| view.size).unwrap();
+    // Inspect the editor's allocated area rather than frame width: maximizing
+    // must provide usable columns and shrinking must soft-wrap the same value.
     assert!(
-      wide_fill > narrow_fill + 70,
-      "Fields did not expand: narrow={narrow_fill}, wide={wide_fill}"
+      wide.x > narrow.x + 60,
+      "Fields did not expand: narrow={narrow:?}, wide={wide:?}"
     );
+    assert!(wide.y <= narrow.y);
     assert_eq!(form_values(&mut runner), values);
     assert_eq!(
       runner
-        .call_on_name("install-dir", |view: &mut EditView| view.get_cursor())
+        .call_on_name("install-dir", |view: &mut WrappedInput| view.get_cursor())
         .unwrap(),
       cursor
     );
@@ -748,7 +840,10 @@ mod tests {
     runner.on_event(Event::WindowResize);
     runner.refresh();
     assert_eq!(form_values(&mut runner), values);
-    assert_eq!(output.lock().unwrap().chars().filter(|c| *c == '_').count(), narrow_fill);
+    assert_eq!(
+      runner.call_on_name("install-dir", |view: &mut WrappedInput| view.size).unwrap(),
+      narrow
+    );
   }
   #[test]
   fn location_changes_derive_bin_until_user_edits_it_and_resize_preserves_values() {
@@ -758,7 +853,7 @@ mod tests {
     runner.refresh();
     let root = temp.path().join("other/application").to_string_lossy().to_string();
     let callback = runner
-      .call_on_name("install-dir", |v: &mut EditView| v.set_content(root.clone()))
+      .call_on_name("install-dir", |v: &mut WrappedInput| v.set_content(root.clone()))
       .unwrap();
     callback(&mut runner);
     assert_eq!(
@@ -767,7 +862,7 @@ mod tests {
     );
     runner.user_data::<State>().unwrap().derived_bin = false;
     let custom = temp.path().join("custom-bin").to_string_lossy().to_string();
-    runner.call_on_name("bin-dir", |v: &mut EditView| {
+    runner.call_on_name("bin-dir", |v: &mut WrappedInput| {
       let _ = v.set_content(custom.clone());
     });
     size.store(30, Ordering::SeqCst);
@@ -783,7 +878,7 @@ mod tests {
   #[test]
   fn invalid_values_keep_choices_and_escape_cancels_without_mutation() {
     let (_temp, mut siv, root) = fixture();
-    siv.call_on_name("install-dir", |v: &mut EditView| {
+    siv.call_on_name("install-dir", |v: &mut WrappedInput| {
       let _ = v.set_content("relative-path");
     });
     start(&mut siv);
@@ -956,8 +1051,8 @@ mod tests {
     }));
     runner.refresh();
     assert!(output.lock().unwrap().contains("Terminal too small."));
-    runner.call_on_name("installer-dialog", |view: &mut Dialog| {
-      let _ = view.set_focus(cursive::views::DialogFocus::Button(0));
+    runner.call_on_name("installer-dialog", |view: &mut Form| {
+      let _ = view.view.set_focus(cursive::views::DialogFocus::Button(0));
     });
     runner.on_event(Event::Key(Key::Enter));
     assert_eq!(runner.user_data::<State>().unwrap().stage, Stage::Choices);

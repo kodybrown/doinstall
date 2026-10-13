@@ -47,11 +47,13 @@ from the same build together on the build machine.
 
 ## Interactive installer
 
-Install and uninstall use a plain Cursive dialog with standard controls and
-keyboard navigation when interactive execution is selected. Choices, progress,
-and summary occupy separate screens. Cancel/Escape/Ctrl+C confirms by default;
+Install and uninstall use a themed Cursive form with colored surfaces, a shadow,
+filled buttons, grouped options, and keyboard navigation. Focused checkboxes
+highlight their label and show a marker; long input values soft-wrap. Choices,
+text-only progress, and wrapped summaries occupy separate screens. Cancel/Escape/Ctrl+C confirms by default;
 `runtime.confirm-cancel: false` skips the confirmation. `--plain` uses the original line prompts;
-`--non-interactive` keeps automation output plain. No theme configuration is added.
+`--non-interactive` keeps automation output plain. `runtime.theme: default` selects
+the internal theme; colors and layout are not package settings.
 Try the [temporary Windows UI preview](examples/hello/README.md#interactive-windows-preview).
 
 ## Development and acceptance

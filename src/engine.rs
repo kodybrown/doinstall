@@ -655,6 +655,7 @@ pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
     console::begin(&package.application, true)?;
     console::settings()?;
     let input = Input {
+      group_index: None,
       kind: "boolean".into(),
       required: true,
       prompt: Some(format!("Uninstall {} from {}?", receipt.app_id, root.display())),

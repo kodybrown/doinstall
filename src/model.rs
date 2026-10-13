@@ -17,6 +17,9 @@ pub struct Package {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Runtime {
+  /// A theme identifier, never inline colors or layout settings.
+  #[serde(default, skip_serializing_if = "ThemeName::is_default")]
+  pub theme: ThemeName,
   #[serde(default = "interactive_default")]
   pub interactive: bool,
   // Omit the default policy so adding the option does not rewrite existing
@@ -45,6 +48,18 @@ pub struct Runtime {
   pub lifecycle: Lifecycle,
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub managed_files: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeName {
+  #[default]
+  Default,
+}
+impl ThemeName {
+  fn is_default(&self) -> bool {
+    matches!(self, Self::Default)
+  }
 }
 
 fn cancel_confirmation_default(value: &bool) -> bool {
@@ -86,6 +101,9 @@ pub struct Build {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
+  /// Equal indices share a visual group; this does not affect value resolution.
+  #[serde(default, rename = "group-index", skip_serializing_if = "Option::is_none")]
+  pub group_index: Option<u32>,
   #[serde(rename = "type")]
   pub kind: String,
   #[serde(default)]
