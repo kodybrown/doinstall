@@ -3,7 +3,7 @@
 A lightweight, cross-platform installer built in Rust.
 
 Doinstall assembles application files and resolved YAML into an independent
-installer directory. Its destination runtime installs immutable versioned builds,
+installer directory or one ZIP self-extracting launcher. Its destination runtime installs immutable versioned builds,
 creates owned commands/shortcuts, and retains an uninstaller. It works without
 dotask, .NET, or a language SDK on the destination machine; applications may have
 their own runtime requirements.
@@ -20,7 +20,8 @@ Rust 1.95+, Cargo, rustfmt, clippy, and a host linker are required.
 Linux/macOS use `./build.sh build` and `./build.sh verify`. With no arguments the
 launcher lists development commands. Outputs remain external; locate them with
 `cargo metadata --format-version 1 --no-deps --locked` (`target_directory`).
-Both `doinstall[.exe]` and `doinstall-builder[.exe]` are under `release/` there.
+`doinstall[.exe]`, `doinstall-builder[.exe]`, and the precompiled
+`doinstall-launcher[.exe]` template are under `release/` there.
 `build --stage-dir PATH` stages those tools and the optional `doinstall-server`
 helper into a selected directory. The helper supports the reusable
 [Debian/Ubuntu web stack recipe](docs/DEBIAN-WEB-STACK.md); the engine does not
@@ -33,8 +34,8 @@ doinstall-builder --installer /tools/doinstall --config /project/installer.yaml 
 ```
 
 On Windows pass the corresponding `.exe` paths. The builder is a build-machine
-tool; distribute only the resulting directory (`installer[.exe]`,
-`installer.yaml`, and payload). The installer never runs producer tasks or reads
+tool; distribute only the resulting directory (by default,
+`example-setup-v1.0[.exe]`, matching `.yaml`, and payload). The installer never runs producer tasks or reads
 .dotasks.yaml. It can launch pinned tools bundled in its payload through
 [runtime lifecycle actions](docs/INCLUDED-TOOLS.md). See
 [the configuration and ownership contract](docs/INSTALLATION.md).
@@ -47,6 +48,16 @@ build system, which invokes these ordinary command-line tools. Install the tools
 separately; doinstall does not discover projects, install build-system adapters,
 or manage their configuration and updates. Keep the matching runtime and builder
 from the same build together on the build machine.
+
+Add `--self-extracting` to publish one launcher, named
+`example-setup-v1.0-se[.exe]` by default. The builder uses its adjacent precompiled
+launcher template, or an explicit `--launcher-template FILE` for the target OS
+and architecture. Assembling packages requires no Rust SDK or installed archiver.
+The launcher extracts into a fresh retained temporary directory (or
+`--extract-to PATH`) and starts the installer in the same console with direct
+input/output. Windows waits and returns the installer's status; Linux/macOS
+replace the launcher process with the installer. See the
+[self-extracting contract](docs/INSTALLATION.md#self-extracting-launchers).
 
 ## Interactive installer
 
@@ -74,6 +85,13 @@ The web-stack work also passed release verification on Windows x64 (100 tests)
 and native Ubuntu x64 (88 tests, using a temporary Linux clone for Git metadata
 compatibility). See the [web stack contract](docs/DEBIAN-WEB-STACK.md) for server
 recipe acceptance and remaining certificate/ARM64 limits.
+
+The self-extracting launcher passed full release verification on Windows x64
+(120 tests) and Ubuntu x64 in WSL (102 tests). Native console previews passed
+display, cancellation, terminal restoration, and retained-source checks on both
+systems. A Linux launcher assembled by the Windows builder also passed Linux
+install/validate/launch/uninstall acceptance. Native macOS and ARM64 execution,
+distribution signing/notarization, and remote CI remain unverified.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
 [src/shim](src/shim/README.md). Rebuilding those assets requires LLVM.

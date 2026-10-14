@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Installer,
-    [Parameter(Mandatory = $true)][string]$Builder
+    [Parameter(Mandatory = $true)][string]$Builder,
+    [switch]$SelfExtracting
 )
 $ErrorActionPreference = 'Stop'
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
@@ -33,9 +34,11 @@ try {
         }
     }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stage 'source.yaml') -Encoding utf8
-    & $Builder --installer $Installer --config (Join-Path $stage 'source.yaml') --output (Join-Path $stage 'delivery')
+    [string[]]$packageArguments = if ($SelfExtracting) { @('--self-extracting') } else { @() }
+    & $Builder --installer $Installer --config (Join-Path $stage 'source.yaml') --output (Join-Path $stage 'delivery') @packageArguments
     if ($LASTEXITCODE -ne 0) { throw 'Assembly failed' }
-    $package = Join-Path $stage 'delivery/installer.exe'
+    $packageName = if ($SelfExtracting) { 'hello-setup-v1.0.0-se.exe' } else { 'hello-setup-v1.0.0.exe' }
+    $package = Join-Path (Join-Path $stage 'delivery') $packageName
     Write-Host "Preview root: $stage"
     Write-Host 'Keep preview installation and command paths under this temporary root.'
     # Make PATH immutable in the form so this preview never changes user PATH.

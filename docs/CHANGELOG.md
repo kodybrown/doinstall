@@ -334,3 +334,46 @@
   and unchanged-package retry, and real Windows SSH/SCP transport/execution.
   Debian also exercised dependency health failure/recovery. No production or
   user PATH changes. Native arm64 and live ACME issuance/renewal remain pending.
+
+### 2026-10-14 Add ZIP self-extracting console launchers and configurable delivery names
+
+- Add a precompiled native doinstall-launcher template and builder
+  `--self-extracting` / `--launcher-template` options. Assemble a complete ZIP,
+  strict versioned manifest, and footer onto target launcher bytes without
+  recompiling application-specific code or invoking an installed archiver.
+  Publish only the launcher in self-extracting mode and return its actual path
+  through the existing result-file contract. Preserve fresh-output, immutable
+  named-package reuse, and refusal of differing existing contents.
+- Add producer-only packaging names with defaults
+  `<id>-setup-v<version>-se[.exe]` and `<id>-setup-v<version>[.exe]`. Derive the
+  matching YAML by stripping only `.exe` before appending `.yaml`, preserving
+  dotted Unix versions. Consume packaging settings only on the build machine;
+  keep installed management files, receipts, recovery, and uninstall unchanged.
+  Add no compatibility loaders, fallback name searches, or migrations.
+- Extract into a fresh OS temporary directory prefixed by the full launcher
+  stem, or an explicit new/empty `--extract-to` directory. Intentionally retain
+  complete and incomplete source directories. Preserve empty directories and
+  Unix modes; verify ZIP/file hashes and reject unsupported formats, unknown
+  entries, links, traversal, duplicates, and file/directory conflicts before
+  launching the installer. Retain caller arguments, environment, and cwd.
+- Use inherited console handles with no I/O relay. Windows waits and returns
+  the installer status while allowing its cancellation/terminal cleanup;
+  Linux/macOS replace the launcher with the installer using exec. Account for
+  signature trailers and prepare/sign native macOS bundles with codesign.
+  Stage the launcher with native build tools, configure CI tool archives that
+  preserve executable permissions, and add self-extracting console previews.
+  Refresh the staging build-tool hash; shim source and bundled bytes are unchanged.
+- Verification: build.cmd verify passed 120 Rust tests on Windows x64;
+  build.sh verify passed 102 tests in an exact-source Ubuntu x64 WSL clone,
+  including formatting, clippy, shim integrity/PE, and Git whitespace checks.
+  Cargo targets remained C:/tmp/_rust/doinstall/target and
+  /tmp/_rust/doinstall/target. Staged release builds passed on both hosts.
+  Native tests cover direct stdin/stdout/stderr, Windows console ownership,
+  child exit status, Unicode/quoted arguments, matching custom YAML names,
+  retained sources, corrupt containers, and installation/uninstallation.
+- Native Windows and Ubuntu console previews passed form display, cancellation,
+  and terminal restoration. A Linux launcher assembled by the Windows builder
+  passed Linux install, validation, application launch, empty-directory retention,
+  uninstall, and retained-source acceptance. Tests used disposable roots with
+  PATH disabled. macOS/ARM64 execution, distribution signing/notarization,
+  and remote CI were not performed.

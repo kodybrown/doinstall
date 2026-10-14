@@ -11,6 +11,8 @@ mod included_process;
 mod launchers;
 mod model;
 mod package;
+mod packaging;
+mod self_extract;
 mod user_path;
 mod workflow;
 use anyhow::{bail, ensure, Context, Result};
@@ -28,6 +30,8 @@ fn run() -> Result<()> {
   let mut output = None;
   let mut named = false;
   let mut result_file = None;
+  let mut self_extracting = false;
+  let mut launcher_template = None;
   while let Some(argument) = arguments.next() {
     match argument.as_str() {
       "--installer" => {
@@ -47,9 +51,17 @@ fn run() -> Result<()> {
         ensure!(result_file.is_none(), "Duplicate --result-file");
         result_file = Some(PathBuf::from(config::argument_value(&mut arguments, &argument)?));
       }
+      "--self-extracting" => {
+        ensure!(!self_extracting, "Duplicate --self-extracting");
+        self_extracting = true;
+      }
+      "--launcher-template" => {
+        ensure!(launcher_template.is_none(), "Duplicate --launcher-template");
+        launcher_template = Some(PathBuf::from(config::argument_value(&mut arguments, &argument)?));
+      }
       "--help" | "-h" => {
         println!(
-                    "doinstall-builder --installer FILE --config FILE (--output NEW_DIRECTORY | --output-parent DIRECTORY)\n  --output-parent DIRECTORY  Derive directory from application build metadata\n  --result-file FILE         Write absolute FilePath as JSON outside the package\nPaths resolve from the current directory; payload resolves from the YAML.\nThe result file parent must exist. Distribute the whole package, without the builder."
+                    "doinstall-builder --installer FILE --config FILE (--output NEW_DIRECTORY | --output-parent DIRECTORY)\n  --output-parent DIRECTORY  Derive directory from application build metadata\n  --self-extracting          Publish one ZIP self-extracting launcher\n  --launcher-template FILE   Precompiled target launcher (default: beside builder)\n  --result-file FILE         Write absolute FilePath as JSON outside the package\nPaths resolve from the current directory; payload resolves from the YAML.\nThe result file parent must exist. Distribute the complete package or its self-extracting launcher, without the builder."
                 );
         return Ok(());
       }
@@ -62,7 +74,23 @@ fn run() -> Result<()> {
   let config = files::absolute(&config.context("--config is required")?, &cwd)?;
   let output = files::absolute(&output.context("--output or --output-parent is required")?, &cwd)?;
   let result_file = result_file.map(|path| files::absolute(&path, &cwd)).transpose()?;
-  let artifact = package::package(&config, &output, named, &installer, result_file.as_deref())?;
+  ensure!(
+    self_extracting || launcher_template.is_none(),
+    "--launcher-template requires --self-extracting"
+  );
+  let template = if self_extracting {
+    Some(files::absolute(
+      &launcher_template.unwrap_or(std::env::current_exe()?.with_file_name(if cfg!(windows) {
+        "doinstall-launcher.exe"
+      } else {
+        "doinstall-launcher"
+      })),
+      &cwd,
+    )?)
+  } else {
+    None
+  };
+  let artifact = package::package(&config, &output, named, &installer, result_file.as_deref(), template.as_deref())?;
   if let Some(result) = result_file {
     files::write_atomic(&result, &serde_json::to_vec(&serde_json::json!({"FilePath":artifact}))?).with_context(
       || {

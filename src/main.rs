@@ -53,7 +53,12 @@ fn run() -> Result<()> {
   let executable = std::env::current_exe()?;
   let config_file = match &options.config {
     Some(path) => files::absolute(path, &std::env::current_dir()?)?,
-    None => executable.with_extension("yaml"),
+    None => executable.with_file_name(files::installer_yaml_name(
+      executable
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("Installer filename is not UTF-8")?,
+    )),
   };
   if options.uninstall {
     ensure!(

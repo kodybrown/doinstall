@@ -1,7 +1,8 @@
 # Installer configuration and ownership
 
 Doinstall's builder accepts resolved application metadata, payload location, and
-nested `runtime` settings. Producer tasks, gathers, archive creation, and version
+nested `runtime` settings, plus optional producer-only `packaging` names.
+Producer tasks, gathers, application payload creation, and version
 policy are responsibilities of the chosen build system, not the destination
 installer. Doinstall does not parse dotask settings or task files. It can launch
 pinned included tools through [runtime lifecycle actions](INCLUDED-TOOLS.md).
@@ -14,10 +15,100 @@ doinstall-builder --installer /tools/doinstall --config installer.yaml --output 
 
 Windows tools use `.exe`. Builder paths resolve from its working directory; the
 payload resolves from the configuration file. Explicit `--output` directories
-must be fresh; keep the builder out of the resulting distribution. Distribute the complete installer directory. Run
-`installer[.exe] --non-interactive --install-dir ABSOLUTE_PATH` for unattended
-installation, supplying the YAML's required inputs. Interactive behavior and
-shortcuts are controlled by `runtime`.
+must be fresh; keep the builder out of the resulting distribution. Distribute the
+complete installer directory. Run the packaged executable with
+`--non-interactive --install-dir ABSOLUTE_PATH` for unattended
+installation, supplying the YAML's required inputs. The default installer name
+is `<id>-setup-v<version>[.exe]`, with matching `<id>-setup-v<version>.yaml`.
+Interactive behavior and shortcuts are controlled by `runtime`.
+
+## Packaging names
+
+The source YAML may include builder-only settings:
+
+```yaml
+packaging:
+  installer-name: dotask-setup-v1.23.2610.1413.exe
+  launcher-name: dotask-setup-v1.23.2610.1413-se.exe
+```
+
+These are literal portable filenames, not paths or version templates. Unknown
+settings, reserved names, collisions, and Windows names without `.exe` fail.
+The defaults derive from `application.id` and the resolved application version;
+unsafe version bytes use the same percent encoding as build directory names.
+Unix defaults omit `.exe`. The installer YAML name is derived automatically:
+remove only a final `.exe` (case-insensitive), then append `.yaml`. Periods in
+Unix versioned executable names remain intact. The runtime uses this exact name
+beside its executable; `--config FILE` is the only override, with no alternative
+name search or fallback.
+
+The builder removes `packaging` from distributed YAML. The destination runtime
+does not accept producer settings. Installed management files retain their
+internal `installer[.exe]` and `installer.yaml` names, independent of delivery
+names, so receipts, recovery, and uninstall keep their ownership contract.
+There are no compatibility loaders, conversions, or migrations.
+
+## Self-extracting launchers
+
+```sh
+doinstall-builder --installer /tools/doinstall --config installer.yaml --output /delivery/example-1.0 --self-extracting --launcher-template /tools/doinstall-launcher --result-file /delivery/result.json
+```
+
+Windows tools use `.exe`. `--output` remains a fresh output **directory**;
+self-extracting mode publishes only the completed launcher inside it. Directory
+mode publishes the installer, matching YAML, and payload. `--output-parent`
+derives a directory from build metadata and reuses only matching verified
+contents. `--result-file` reports the absolute runnable artifact in either mode.
+Do not distribute the builder or the unassembled launcher template.
+
+The builder and launcher template are ordinary compiled Rust tools. Consumers
+need no Rust SDK, shell packaging script, or installed ZIP utility to assemble
+or execute a package. Supply the installer and launcher template for the
+package's target platform/architecture. The builder's host can differ from the
+target; it validates target binaries without executing them. Native builders
+can be built for Windows, Linux, and macOS, x64 and ARM64. Windows distribution
+tools should be built with the repository launcher to use the static CRT.
+
+The container is a precompiled native executable followed by a Deflate ZIP,
+strict schema-1 JSON manifest, and versioned footer. Unsupported formats fail
+directly. SHA-256 checks detect archive/file corruption; they are not publisher
+authentication. Extraction refuses traversal, links, aliases, duplicate entries,
+unknown files, and file/directory collisions before starting the installer.
+Target Unix executable permissions are carried in the archive.
+
+```sh
+./example-setup-v1.0-se --extract-to /chosen/new-directory -- --non-interactive
+```
+
+`--extract-to PATH` selects the exact extraction directory, relative to the
+caller's working directory when not absolute. It must be new or empty and must
+not traverse links/junctions. Without it, each execution creates a fresh
+directory under the OS temporary root, prefixed with the launcher's filename
+stem and a random suffix. System temporary-root aliases are resolved before
+creating that directory. The launcher prints its source directory to stderr.
+All extracted files are intentionally retained after success, failure, or
+cancellation, including incomplete extraction on failure. There is no cleanup
+or sweep of earlier runs. OS temporary cleanup is not guaranteed; use an
+explicit persistent path for long-term retention. Rerun the extracted installer
+directly to reuse that source directory; a new launcher run extracts afresh.
+
+`--launcher-help` describes extraction without extracting anything. Other
+arguments are passed to the installer; `--` ends launcher option parsing. Both
+processes use the same console. The launcher inherits standard handles,
+environment, and working directory, with no I/O capture or forwarding. Windows
+waits quietly and returns the installer status, keeping itself alive during
+Ctrl+C cancellation so the installer can restore the terminal. Linux/macOS use
+`exec` to replace the launcher with the installer. No new terminal is opened.
+Existing terminal requirements for interactive mode still apply.
+
+Sign the completed launcher after packaging, not the input template. Input
+template signatures are removed because they cover only the original bytes.
+The footer reader accounts for PE certificate and Mach-O signature trailers.
+Native macOS packaging extends `__LINKEDIT` and uses the OS-provided `codesign`
+for ad-hoc signing. When packaging a macOS target on another OS, sign the final
+file on macOS before running it (`codesign --force --sign - FILE`); trusted
+distribution signing/notarization remains the producer's responsibility.
+When copying a Unix launcher from Windows, set its executable bit on Unix.
 
 ## Installer YAML schema 1
 
@@ -84,7 +175,8 @@ runtime:
     - '${local-app-data}/Example/settings'
 ```
 
-The runtime finds same-basename YAML beside itself, independent of working directory.
+The runtime finds matching-name YAML beside itself, independent of working directory
+(only `.exe` is stripped before appending `.yaml`).
 `--config FILE` overrides that path. Payload paths resolve relative to the YAML;
 packaging rewrites the payload reference to its packaged directory or ZIP.
 ZIP traversal, duplicate paths, and links are rejected. Links inside directory

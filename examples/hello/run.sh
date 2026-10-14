@@ -42,8 +42,8 @@ runtime:
     add-to-path: false
 YAML
 "$builder" --installer "$installer" --config "$stage/source.yaml" --output "$stage/delivery"
-"$stage/delivery/installer" --validate
-"$stage/delivery/installer" --non-interactive --install-dir "$stage/application" --bin-dir "$stage/commands"
+"$stage/delivery/hello-setup-v1.0.0" --validate
+"$stage/delivery/hello-setup-v1.0.0" --non-interactive --install-dir "$stage/application" --bin-dir "$stage/commands"
 "$stage/commands/hello"
 "$stage/application/installer/installer" uninstall --non-interactive
 echo 'Example assembled, validated, installed, ran, and uninstalled.'

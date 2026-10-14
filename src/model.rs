@@ -13,7 +13,8 @@ pub struct Package {
 }
 
 /// Options used on the destination machine. The creator preserves this layout
-/// when writing the package, so source and distributed YAML share one schema.
+/// when writing the package. Producer-only packaging settings are omitted from
+/// distributed YAML; destination runtime settings share the same schema.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Runtime {

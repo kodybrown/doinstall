@@ -42,6 +42,11 @@ $target = (cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Js
 .\examples\hello\preview.ps1 -Installer "$target/release/doinstall.exe" -Builder "$target/release/doinstall-builder.exe"
 ```
 
+Add `-SelfExtracting` to exercise the ZIP launcher and direct console handoff.
+The precompiled `doinstall-launcher.exe` must be beside the builder. The same
+temporary installation and locked-off PATH policy apply; extracted source
+directories are intentionally retained outside the preview's cleanup root.
+
 Tab/Shift+Tab moves between enabled controls; Space toggles a checkbox. Install
 shows progress and a summary, and Close returns to the script. Esc/Ctrl+C asks before canceling
 choices or requesting cancellation during work. Choose Yes to cancel; No or Escape
@@ -91,7 +96,13 @@ not prevent these Cargo build/test commands or the preview. Full verification
 needs a compatible Linux Git or a native Linux clone made from a portable bundle.
 
 The same preview script works in native Linux/macOS Bash with tools built for
-that host. The user reported this Linux x64 preview passed in Debian WSL using
+that host. Append `--self-extracting` to exercise the launcher, with the native
+template beside the builder; extracted sources are intentionally retained.
+The user reported this Linux x64 preview passed in Debian WSL using
 a native `cargo build` debug binary. The combined UI/included-tools source also
 passed all 79 Rust tests in Debian WSL. Linux release verification and
-macOS/ARM64 execution remain pending.
+macOS/ARM64 execution for that historical preview were not performed.
+The self-extracting follow-up passed 102 release tests and an interactive
+launcher display/cancellation/terminal-restoration preview in Ubuntu x64 WSL;
+Windows x64 passed 120 release tests and the equivalent launcher preview.
+Native macOS/ARM64 execution remains pending.

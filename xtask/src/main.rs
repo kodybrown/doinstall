@@ -66,7 +66,12 @@ fn run() -> Result<()> {
       let output = target()?.join("release");
       if let Some(stage) = stage {
         fs::create_dir_all(&stage)?;
-        for name in ["doinstall", "doinstall-builder", "doinstall-server"] {
+        for name in [
+          "doinstall",
+          "doinstall-builder",
+          "doinstall-launcher",
+          "doinstall-server",
+        ] {
           let name = format!("{name}{}", if cfg!(windows) { ".exe" } else { "" });
           fs::copy(output.join(&name), stage.join(name))?;
         }

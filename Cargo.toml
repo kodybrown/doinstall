@@ -13,6 +13,10 @@ path = "src/builder.rs"
 name = "doinstall-server"
 path = "src/server/main.rs"
 
+[[bin]]
+name = "doinstall-launcher"
+path = "src/launcher.rs"
+
 [dependencies]
 anyhow = "1"
 ctrlc = "3.5"

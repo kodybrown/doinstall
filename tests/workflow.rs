@@ -212,9 +212,9 @@ fn zip_payload_preserves_permissions_and_refuses_traversal() {
   assert!(!f._temp.path().join("escape").exists());
   // Mutating the source archive never changes the completed independent package.
   let artifact = output.join(if cfg!(windows) {
-    "installer.exe"
+    "probe-setup-v1.0.0.exe"
   } else {
-    "installer"
+    "probe-setup-v1.0.0"
   });
   let result = Command::new(artifact).arg("--validate").output().unwrap();
   assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
@@ -292,7 +292,8 @@ fn package_snapshot_runs_after_source_is_removed() {
   let output = f._temp.path().join("delivery");
   f.good(&["package", "--output", output.to_str().unwrap()]);
   let source: Value = serde_saphyr::from_str(&fs::read_to_string(&f.config).unwrap()).unwrap();
-  let shipped: Value = serde_saphyr::from_str(&fs::read_to_string(output.join("installer.yaml")).unwrap()).unwrap();
+  let shipped: Value =
+    serde_saphyr::from_str(&fs::read_to_string(output.join("probe-setup-v1.0.0.yaml")).unwrap()).unwrap();
   // Serialization makes omitted defaults explicit, but preserves every supplied
   // runtime field under the same mapping.
   for key in ["commands", "values", "settings"] {
@@ -306,9 +307,9 @@ fn package_snapshot_runs_after_source_is_removed() {
   fs::remove_dir_all(&f.payload).unwrap();
   fs::remove_file(&f.config).unwrap();
   let engine = output.join(if cfg!(windows) {
-    "installer.exe"
+    "probe-setup-v1.0.0.exe"
   } else {
-    "installer"
+    "probe-setup-v1.0.0"
   });
   let result = Command::new(&engine)
     .arg("--non-interactive")
@@ -756,7 +757,7 @@ fn builder_refuses_result_paths_that_mutate_inputs_or_packages() {
     assert!(!f.payload.join("report.json").exists());
   }
   f.configure(|p| p["application"]["build"] = json!({"stamp":"26279-0612"}));
-  let named = output.join("probe-1.0.0-26279-0612/installer.yaml");
+  let named = output.join("probe-1.0.0-26279-0612/probe-setup-v1.0.0.yaml");
   let result = f.run(&[
     "package",
     "--output-parent",

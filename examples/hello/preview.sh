@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ $# != 2 ]]; then
-  echo 'Usage: bash examples/hello/preview.sh /absolute/path/doinstall /absolute/path/doinstall-builder' >&2
+if [[ $# != 2 && $# != 3 ]] || [[ $# = 3 && $3 != --self-extracting ]]; then
+  echo 'Usage: bash examples/hello/preview.sh /absolute/path/doinstall /absolute/path/doinstall-builder [--self-extracting]' >&2
   exit 1
 fi
 installer=$1
 builder=$2
+package_args=()
+package_name=hello-setup-v1.0.0
+if [[ $# = 3 ]]; then
+  package_args+=(--self-extracting)
+  package_name+=-se
+fi
 [[ $installer = /* && $builder = /* ]] || { echo 'Tool paths must be absolute.' >&2; exit 1; }
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 case $(uname -s) in
@@ -43,13 +49,13 @@ runtime:
     additional-command: false
     add-to-path: false
 YAML
-"$builder" --installer "$installer" --config "$stage/source.yaml" --output "$stage/delivery"
+"$builder" --installer "$installer" --config "$stage/source.yaml" --output "$stage/delivery" "${package_args[@]}"
 echo "Preview root: $stage"
 echo 'Keep preview installation and command paths under this temporary root.'
 # Lock PATH in the form; membership or edits never authorize a PATH write here.
 status=0
-"$stage/delivery/installer" --interactive --set add-to-path=false || status=$?
+"$stage/delivery/$package_name" --interactive --set add-to-path=false || status=$?
 [[ $status = 0 || $status = 130 ]] || { echo 'Installer reported an error.' >&2; exit "$status"; }
 if [[ -f $stage/application/installer/installation.yaml ]]; then
-  "$stage/delivery/installer" uninstall --non-interactive --install-dir "$stage/application"
+  "$stage/delivery/$package_name" uninstall --non-interactive --install-dir "$stage/application"
 fi

@@ -12,6 +12,18 @@ use std::{
 pub fn hash(bytes: &[u8]) -> String {
   format!("{:x}", Sha256::digest(bytes))
 }
+pub fn installer_yaml_name(executable: &str) -> String {
+  // Only .exe is a packaging extension. Unix names commonly end in a dotted
+  // application version; replacing that suffix would discard part of the name.
+  format!("{}.yaml", executable_stem(executable))
+}
+pub fn executable_stem(executable: &str) -> &str {
+  if executable.to_ascii_lowercase().ends_with(".exe") {
+    &executable[..executable.len() - 4]
+  } else {
+    executable
+  }
+}
 pub fn file_hash(path: &Path) -> Result<String> {
   let mut file = fs::File::open(path)?;
   let mut digest = Sha256::new();
@@ -192,14 +204,22 @@ pub fn absolute(path: &Path, base: &Path) -> Result<PathBuf> {
   Ok(resolved)
 }
 pub fn inventory(root: &Path) -> Result<BTreeMap<String, FileRecord>> {
+  inventory_tree(root, true)
+}
+/// A delivery contains its own installer YAML; payloads reserve those names.
+#[allow(dead_code)] // Consumed by packaging binaries, not the destination engine.
+pub fn delivery_inventory(root: &Path) -> Result<BTreeMap<String, FileRecord>> {
+  inventory_tree(root, false)
+}
+fn inventory_tree(root: &Path, payload: bool) -> Result<BTreeMap<String, FileRecord>> {
   let mut result = BTreeMap::new();
-  fn walk(root: &Path, directory: &Path, result: &mut BTreeMap<String, FileRecord>) -> Result<()> {
+  fn walk(root: &Path, directory: &Path, result: &mut BTreeMap<String, FileRecord>, payload: bool) -> Result<()> {
     safe_path(directory)?;
     for item in fs::read_dir(directory)? {
       let path = item?.path();
       safe_path(&path)?;
       if path.is_dir() {
-        walk(root, &path, result)?;
+        walk(root, &path, result, payload)?;
       } else {
         ensure!(path.is_file(), "Not a regular file: {}", path.display());
         let rel = path
@@ -208,7 +228,7 @@ pub fn inventory(root: &Path) -> Result<BTreeMap<String, FileRecord>> {
           .context("Non UTF-8 filename")?
           .replace('\\', "/");
         ensure!(
-          !matches!(rel.as_str(), "installer.yaml" | "installation.yaml"),
+          !payload || !matches!(rel.as_str(), "installer.yaml" | "installation.yaml"),
           "Reserved payload filename: {rel}"
         );
         #[cfg(unix)]
@@ -229,7 +249,7 @@ pub fn inventory(root: &Path) -> Result<BTreeMap<String, FileRecord>> {
     }
     Ok(())
   }
-  walk(root, root, &mut result)?;
+  walk(root, root, &mut result, payload)?;
   Ok(result)
 }
 pub fn copy_payload(source: &Path, target: &Path, files: &BTreeMap<String, FileRecord>) -> Result<()> {

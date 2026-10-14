@@ -34,7 +34,7 @@ runtime:
 "@ | Set-Content -LiteralPath (Join-Path $stage 'source.yaml') -Encoding utf8
     & $Builder --installer $Installer --config (Join-Path $stage 'source.yaml') --output (Join-Path $stage 'delivery')
     if ($LASTEXITCODE -ne 0) { throw 'Assembly failed' }
-    $package = Join-Path $stage 'delivery/installer.exe'
+    $package = Join-Path $stage 'delivery/hello-setup-v1.0.0.exe'
     & $package --validate
     if ($LASTEXITCODE -ne 0) { throw 'Validation failed' }
     & $package --non-interactive --install-dir (Join-Path $stage 'application') --bin-dir (Join-Path $stage 'commands')

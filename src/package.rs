@@ -1,6 +1,6 @@
 use crate::{
   config,
-  engine::{engine_name_for, fingerprint, identity, lock, verify_entries},
+  engine::{fingerprint, identity, lock, verify_entries},
   files,
   model::*,
 };
@@ -16,12 +16,18 @@ pub fn package(
   named: bool,
   installer: &Path,
   result_file: Option<&Path>,
+  launcher_template: Option<&Path>,
 ) -> Result<PathBuf> {
-  let mut package: Package = files::read_yaml(config_file)?;
+  let (mut package, settings) = crate::packaging::read(config_file)?;
   config::validate(&package)?;
+  let names = settings.names(&package)?;
   ensure!(installer.is_file(), "Installer executable not found: {}", installer.display());
   crate::binary::validate(installer, &package.platform, &package.architecture)?;
-  let engine_name = engine_name_for(&package.platform);
+  let engine_name = names.installer.as_str();
+  if let Some(template) = launcher_template {
+    crate::binary::validate_launcher(template, &package.platform, &package.architecture)?;
+    crate::self_extract::template_hash(template)?;
+  }
   let payload = files::absolute(Path::new(&package.payload), config_file.parent().unwrap())?;
   ensure!(
     !files::overlaps(destination, &payload),
@@ -30,7 +36,10 @@ pub fn package(
   if let Some(result) = result_file {
     // Reporting an artifact must never mutate its inputs or the deliverable.
     ensure!(
-      result != config_file && result != installer && !files::overlaps(result, &payload),
+      result != config_file
+        && result != installer
+        && launcher_template != Some(result)
+        && !files::overlaps(result, &payload),
       "Result file must not overlap the config, installer executable, or payload"
     );
     ensure!(
@@ -92,6 +101,12 @@ pub fn package(
     !files::overlaps(&output, &payload),
     "Package output and payload must not overlap"
   );
+  if let Some(template) = launcher_template {
+    ensure!(
+      !files::overlaps(&output, template),
+      "Package output must not overlap the launcher template"
+    );
+  }
   if let Some(result) = result_file {
     ensure!(
       !files::overlaps(result, &output),
@@ -106,8 +121,20 @@ pub fn package(
   }
   if named && output.exists() {
     files::safe_path(&output)?;
-    let existing: Package = files::read_yaml(&output.join("installer.yaml"))?;
-    let existing_payload = files::absolute(Path::new(&existing.payload), &output)?;
+    let extracted = files::temporary()?;
+    let existing_root = if let Some(template) = launcher_template {
+      let bundle = crate::self_extract::Bundle::open(&output.join(&names.launcher))?;
+      ensure!(
+        bundle.manifest.template_hash == crate::self_extract::template_hash(template)?,
+        "Package name already belongs to a different launcher template"
+      );
+      bundle.extract(extracted.path())?;
+      extracted.path()
+    } else {
+      output.as_path()
+    };
+    let existing: Package = files::read_yaml(&existing_root.join(&names.yaml))?;
+    let existing_payload = files::absolute(Path::new(&existing.payload), existing_root)?;
     let existing_temporary = files::temporary()?;
     let mut existing_inventory = if existing_payload.is_dir() {
       files::inventory(&existing_payload)?
@@ -124,12 +151,17 @@ pub fn package(
     }
     ensure!(
       fingerprint(&existing, &existing_inventory)? == fingerprint(&package, &inventory)?
-        && files::file_hash(&output.join(engine_name))? == files::file_hash(installer)?,
+        && files::file_hash(&existing_root.join(engine_name))? == files::file_hash(installer)?,
       "Package name already belongs to different contents: {}. Rebuild the application with a new build stamp.",
       output.display()
     );
-    println!("Reused installer: {}", output.join(engine_name).display());
-    return Ok(output.join(engine_name));
+    let artifact = output.join(if launcher_template.is_some() {
+      &names.launcher
+    } else {
+      engine_name
+    });
+    println!("Reused installer: {}", artifact.display());
+    return Ok(artifact);
   }
   // Publish a complete independent copy by renaming a sibling staging directory.
   files::safe_path(&output)?;
@@ -152,7 +184,25 @@ pub fn package(
     package.payload = "payload.zip".into();
   }
   fs::copy(installer, final_stage.path().join(engine_name))?;
-  files::write_yaml(&final_stage.path().join("installer.yaml"), &package)?;
+  files::write_yaml(&final_stage.path().join(&names.yaml), &package)?;
+  if let Some(template) = launcher_template {
+    let delivery = tempfile::Builder::new()
+      .prefix("installer-launcher-")
+      .tempdir_in(output.parent().unwrap())?;
+    crate::self_extract::assemble(
+      template,
+      final_stage.path(),
+      engine_name,
+      &package.platform,
+      &package.architecture,
+      &fingerprint(&package, &inventory)?,
+      &delivery.path().join(&names.launcher),
+    )?;
+    fs::rename(delivery.path(), &output)?;
+    let artifact = output.join(&names.launcher);
+    println!("Created launcher: {}", artifact.display());
+    return Ok(artifact);
+  }
   fs::rename(final_stage.path(), &output)?;
   println!("Created installer: {}", output.join(engine_name).display());
   Ok(output.join(engine_name))

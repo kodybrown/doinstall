@@ -187,7 +187,7 @@ fn cross_platform_builder_carries_linux_executable_modes_without_running_destina
     .output()
     .unwrap();
   assert!(result.status.success(), "{result:?}");
-  assert!(output.join("installer").is_file());
+  assert!(output.join("probe-setup-v1.0").is_file());
   assert!(!output.join("installer.exe").exists());
   #[cfg(windows)]
   {
