@@ -1,0 +1,18 @@
+schema: 1
+id: doinstall-sample
+domain: sample.example.test
+port: 5180
+executable: api/Sample.Api
+database:
+  role: doinstall_sample
+  connections:
+    ConnectionStrings__Application: doinstall_sample
+redis:
+  port: 6381
+  host-environment: REDIS_HOST
+  port-environment: REDIS_PORT
+  password-environment: REDIS_PASSWORD
+environment:
+  ASPNETCORE_ENVIRONMENT: Production
+tls:
+  enabled: false

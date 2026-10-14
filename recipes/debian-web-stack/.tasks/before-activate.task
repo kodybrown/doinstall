@@ -1,0 +1,26 @@
+description: Stop writes, restore-verify database backups, and run the application's migration tool.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [daemon-reload]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, --now, {result: plan.data.redis_service}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [restart, {result: plan.data.redis_service}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [stop, {result: plan.data.service}]
+    when: {result: plan.data.service_exists}
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [backup, --config, {setting: server.config}]
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [migrate, --config, {setting: server.config}]

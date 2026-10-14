@@ -1,0 +1,87 @@
+description: Preserve credentials and atomically write owned service and application configuration.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [credentials, --config, {setting: server.config}]
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - file: {operation: directory, path: {result: plan.data.config_dir}, mode: "0755"}
+  - file: {operation: directory, path: {result: plan.data.state_dir}, mode: "0755"}
+  - file: {operation: directory, path: {result: plan.data.log_dir}, mode: "0750"}
+  - file: {operation: directory, path: {result: plan.data.acme_dir}, mode: "0755"}
+  - exec:
+      executable: /usr/bin/chown
+      arguments: [{result: plan.data.id}, {result: plan.data.state_dir}, {result: plan.data.log_dir}]
+  - id: old_env_path
+    file: {operation: read, path: {result: plan.data.env_path}, optional: true}
+  - file:
+      operation: write
+      path: {result: plan.data.env_path}
+      content: {result: plan.data.env_content}
+      expected-sha256: {result: old_env_path.sha256}
+      mode: "0600"
+  - id: old_unit_path
+    file: {operation: read, path: {result: plan.data.unit_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.unit_path}
+      source: templates/api.service
+      values:
+        id: {result: plan.data.id}
+        env_path: {result: plan.data.env_path}
+        working_dir: {result: plan.data.working_dir}
+        exec: {result: plan.data.exec}
+        state_dir: {result: plan.data.state_dir}
+        log_dir: {result: plan.data.log_dir}
+      expected-sha256: {result: old_unit_path.sha256}
+      mode: "0644"
+  - id: old_redis_path
+    file: {operation: read, path: {result: plan.data.redis_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.redis_path}
+      source: templates/redis.conf
+      values:
+        redis_port: {result: plan.data.redis_port}
+        redis_password: {result: plan.data.redis_password}
+        state_dir: {result: plan.data.state_dir}
+      expected-sha256: {result: old_redis_path.sha256}
+      mode: "0640"
+  - exec:
+      executable: /usr/bin/chown
+      arguments: [{result: plan.data.id}, {result: plan.data.redis_path}]
+  - id: old_redis_unit_path
+    file: {operation: read, path: {result: plan.data.redis_unit_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.redis_unit_path}
+      source: templates/redis.service
+      values:
+        id: {result: plan.data.id}
+        redis_path: {result: plan.data.redis_path}
+        state_dir: {result: plan.data.state_dir}
+      expected-sha256: {result: old_redis_unit_path.sha256}
+      mode: "0644"
+  - id: old_renew_unit_path
+    file: {operation: read, path: {result: plan.data.renew_unit_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.renew_unit_path}
+      source: templates/certificates.service
+      values:
+        id: {result: plan.data.id}
+      expected-sha256: {result: old_renew_unit_path.sha256}
+      mode: "0644"
+  - id: old_renew_timer_path
+    file: {operation: read, path: {result: plan.data.renew_timer_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.renew_timer_path}
+      source: templates/certificates.timer
+      values:
+        id: {result: plan.data.id}
+      expected-sha256: {result: old_renew_timer_path.sha256}
+      mode: "0644"

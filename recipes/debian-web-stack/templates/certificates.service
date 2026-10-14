@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew {{id}} certificate
+ConditionPathExists=/etc/letsencrypt/live/{{id}}/fullchain.pem
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --cert-name {{id}} --quiet
+ExecStartPost=/usr/bin/systemctl reload nginx

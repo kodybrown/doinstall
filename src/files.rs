@@ -211,16 +211,13 @@ pub fn inventory(root: &Path) -> Result<BTreeMap<String, FileRecord>> {
           !matches!(rel.as_str(), "installer.yaml" | "installation.yaml"),
           "Reserved payload filename: {rel}"
         );
-        let mut mode = 0;
         #[cfg(unix)]
-        {
+        let mode = {
           use std::os::unix::fs::PermissionsExt;
-          mode = fs::metadata(&path)?.permissions().mode() & 0o777;
-        }
+          fs::metadata(&path)?.permissions().mode() & 0o777
+        };
         #[cfg(windows)]
-        {
-          let _ = &mut mode;
-        }
+        let mode = 0;
         result.insert(
           rel,
           FileRecord {

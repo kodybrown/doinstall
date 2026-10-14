@@ -308,3 +308,29 @@
   fixtures. Cargo targets remain external under C:/tmp/_rust/doinstall/target
   on Windows and /tmp/_rust/doinstall/target in Debian; tests use temporary roots
   and do not change the active installation or user PATH.
+
+### 2026-10-14 Add a reusable Debian/Ubuntu web stack recipe
+
+- Add optional doinstall-server tooling for strict stack validation, persistent
+  credentials, account/database ownership, private SQL, restore-verified database
+  backups, application migrations and API/nginx readiness. Keep service/package
+  orchestration and editable configuration in reusable YAML tasks/templates.
+- Provide Debian 12/Ubuntu 24.04 workflows for PostgreSQL, private authenticated
+  Redis, nginx, systemd application services, optional static frontend, webroot
+  certificates and renewal timers. Preserve immutable application versions and
+  installer ownership/recovery semantics; the engine has no dotask dependency.
+- Add a standalone .NET sample and frontend, document consumer packaging and
+  recovery, and stage the optional helper with the build tools. Remove a
+  Unix-only output-mode initialization warning without changing inventory modes;
+  refresh only the recorded build-tool hash, leaving shim source/assets intact.
+- Verification: build.cmd verify passed 100 Rust tests on Windows x64; native
+  Linux release verification passed 88 tests in an exact-source temporary clone,
+  plus formatting, clippy, shim integrity/PE and whitespace checks. Older Linux
+  Git cannot read the Windows checkout's relative-worktree extension.
+- Disposable Ubuntu 24.04 and Debian 12 both installed a consuming API and the
+  sample API/static frontend using the same static x64 tools and pinned runtime.
+  Ubuntu acceptance covered repeats, upgrade backups restored into temporary
+  databases, data/credential preservation, ownership refusal, failed migration
+  and unchanged-package retry, and real Windows SSH/SCP transport/execution.
+  Debian also exercised dependency health failure/recovery. No production or
+  user PATH changes. Native arm64 and live ACME issuance/renewal remain pending.

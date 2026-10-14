@@ -1,0 +1,11 @@
+description: Validate nginx configuration before starting or reloading it.
+steps:
+  - exec:
+      executable: /usr/sbin/nginx
+      arguments: [-t]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, --now, nginx]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [reload, nginx]

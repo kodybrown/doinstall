@@ -1,0 +1,45 @@
+description: Start the stack and require successful application and nginx readiness.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [daemon-reload]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, --now, {result: plan.data.redis_service}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [restart, {result: plan.data.redis_service}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, {result: plan.data.service}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [restart, {result: plan.data.service}]
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [readiness, --config, {setting: server.config}]
+  - exec:
+      executable: /usr/sbin/nginx
+      arguments: [-t]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [reload, nginx]
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [proxy-readiness, --config, {setting: server.config}]
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, --now, {result: plan.data.certificate_timer}]
+    when: {result: plan.data.tls}
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [disable, --now, {result: plan.data.certificate_timer}]
+    when: {result: plan.data.no_tls}
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [cleanup, --config, {setting: server.config}]

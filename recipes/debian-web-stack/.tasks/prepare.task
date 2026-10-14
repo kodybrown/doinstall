@@ -1,0 +1,8 @@
+description: Provision and configure the reusable Debian/Ubuntu web stack.
+steps:
+  - run: linux/packages
+  - run: linux/account
+  - run: linux/configure
+  - run: linux/postgres
+  - run: linux/nginx-config
+  - run: linux/certificates

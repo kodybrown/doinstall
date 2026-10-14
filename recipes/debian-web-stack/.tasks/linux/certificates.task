@@ -1,0 +1,12 @@
+description: Obtain or retain a webroot certificate, then publish the TLS nginx configuration.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - exec:
+      executable: /usr/bin/certbot
+      arguments: [certonly, --webroot, --webroot-path, {result: plan.data.acme_dir}, --non-interactive, --agree-tos, --keep-until-expiring, --email, {result: plan.data.email}, --domain, {result: plan.data.domain}, --cert-name, {result: plan.data.id}]
+    when: {result: plan.data.tls}
+  - run: linux/nginx-config

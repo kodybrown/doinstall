@@ -1,0 +1,34 @@
+description: Atomically publish nginx configuration and verify it before reload.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - id: previous
+    file: {operation: read, path: {result: plan.data.nginx_path}, optional: true}
+  - file:
+      operation: render
+      path: {result: plan.data.nginx_path}
+      source: templates/nginx-http.conf
+      values:
+        id: {result: plan.data.id}
+        domain: {result: plan.data.domain}
+        acme_dir: {result: plan.data.acme_dir}
+        location: {result: plan.data.nginx_location}
+      expected-sha256: {result: previous.sha256}
+      mode: "0644"
+    when: {result: plan.data.nginx_http}
+  - file:
+      operation: render
+      path: {result: plan.data.nginx_path}
+      source: templates/nginx-https.conf
+      values:
+        id: {result: plan.data.id}
+        domain: {result: plan.data.domain}
+        acme_dir: {result: plan.data.acme_dir}
+        location: {result: plan.data.nginx_location}
+      expected-sha256: {result: previous.sha256}
+      mode: "0644"
+    when: {result: plan.data.nginx_tls}
+  - run: linux/nginx

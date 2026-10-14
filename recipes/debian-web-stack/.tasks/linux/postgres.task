@@ -1,0 +1,8 @@
+description: Start PostgreSQL and provision only explicitly owned roles and databases.
+steps:
+  - exec:
+      executable: /usr/bin/systemctl
+      arguments: [enable, --now, postgresql]
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [postgres, --config, {setting: server.config}]

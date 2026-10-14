@@ -1,0 +1,5 @@
+description: Create or verify this application's dedicated service account.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [account, --config, {setting: server.config}]

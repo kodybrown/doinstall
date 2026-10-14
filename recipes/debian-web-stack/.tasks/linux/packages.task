@@ -1,0 +1,14 @@
+description: Refresh apt metadata and install server services and .NET native dependencies.
+remarks: Does not perform a full distribution upgrade. The pinned .NET runtime is supplied in the payload.
+steps:
+  - exec:
+      executable: {setting: server.helper}
+      arguments: [plan, --config, {setting: server.config}]
+  - id: plan
+    file: {operation: read, path: {environment: DOINSTALL_SERVER_PLAN}, format: json}
+  - exec:
+      executable: /usr/bin/apt-get
+      arguments: [update]
+  - exec:
+      executable: /usr/bin/apt-get
+      arguments: [-y, install, ca-certificates, curl, postgresql, redis-server, nginx, certbot, libgssapi-krb5-2, zlib1g, tzdata, {result: plan.data.icu_package}, {result: plan.data.ssl_package}]

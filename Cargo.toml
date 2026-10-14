@@ -9,6 +9,10 @@ license = "MIT"
 name = "doinstall-builder"
 path = "src/builder.rs"
 
+[[bin]]
+name = "doinstall-server"
+path = "src/server/main.rs"
+
 [dependencies]
 anyhow = "1"
 ctrlc = "3.5"

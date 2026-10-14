@@ -21,7 +21,10 @@ Linux/macOS use `./build.sh build` and `./build.sh verify`. With no arguments th
 launcher lists development commands. Outputs remain external; locate them with
 `cargo metadata --format-version 1 --no-deps --locked` (`target_directory`).
 Both `doinstall[.exe]` and `doinstall-builder[.exe]` are under `release/` there.
-`build --stage-dir PATH` copies the release pair into a selected tool directory.
+`build --stage-dir PATH` stages those tools and the optional `doinstall-server`
+helper into a selected directory. The helper supports the reusable
+[Debian/Ubuntu web stack recipe](docs/DEBIAN-WEB-STACK.md); the engine does not
+require it.
 
 ## Create an installer
 
@@ -64,8 +67,13 @@ registry key; they do not modify an active installation or the user's PATH.
 The inherited Windows x64 runtime coverage is retained. The user also reported
 a successful Linux x64 interactive preview in Debian WSL using a native debug
 build. The combined UI/included-tools branch also passed 79 Rust tests in Debian
-WSL using a native debug build. Linux release verification, macOS, and Windows
+WSL using a native debug build. macOS and Windows
 ARM64 acceptance remain pending.
+
+The web-stack work also passed release verification on Windows x64 (100 tests)
+and native Ubuntu x64 (88 tests, using a temporary Linux clone for Git metadata
+compatibility). See the [web stack contract](docs/DEBIAN-WEB-STACK.md) for server
+recipe acceptance and remaining certificate/ARM64 limits.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
 [src/shim](src/shim/README.md). Rebuilding those assets requires LLVM.

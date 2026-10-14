@@ -1,0 +1,6 @@
+version: 1
+name: Debian web stack
+settings:
+  server:
+    helper: ../tooling/doinstall-server
+    config: stack.yaml

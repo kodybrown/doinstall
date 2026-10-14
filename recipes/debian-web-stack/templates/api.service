@@ -1,0 +1,25 @@
+[Unit]
+Description={{id}} API
+After=network-online.target postgresql.service {{id}}-redis.service
+Wants=network-online.target
+Requires={{id}}-redis.service
+
+[Service]
+Type=simple
+User={{id}}
+Group={{id}}
+WorkingDirectory={{working_dir}}
+EnvironmentFile={{env_path}}
+ExecStart={{exec}}
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths={{state_dir}} {{log_dir}}
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
