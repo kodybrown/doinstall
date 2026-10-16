@@ -377,3 +377,16 @@
   uninstall, and retained-source acceptance. Tests used disposable roots with
   PATH disabled. macOS/ARM64 execution, distribution signing/notarization,
   and remote CI were not performed.
+
+### 2026-10-16 Keep rustfmt configuration quiet on stable Rust
+
+- Comment out 52 nightly-only rustfmt settings while preserving their preferred
+  values and explanatory comments. Keep all 27 supported settings active and
+  unchanged, including Rust edition, style edition, indentation, and line width.
+  Document stable rustfmt as the repository formatter without changing the
+  installed toolchain or user-level configuration.
+- Verification: cargo fmt --all -- --check passed with zero warnings, compared
+  with 520 warning lines before the change. No Rust source files changed;
+  git diff --check passed. Cargo's evaluated target directory remains external
+  at C:/tmp/_rust/doinstall/target. Runtime tests were not repeated for this
+  configuration-only change; the running installer was left undisturbed.
