@@ -1,5 +1,6 @@
 **/target/
 artifacts/
+worktrees/
 !src/shim/assets/win-x64.exe
 !src/shim/assets/win-arm64.exe
 doinstall notes.mdx
