@@ -12,14 +12,17 @@ jobs:
             shell: bash
             command: ./build.sh verify
             build: ./build.sh build
+            package: ./build.sh package
           - os: macos-latest
             shell: bash
             command: ./build.sh verify
             build: ./build.sh build
+            package: ./build.sh package
           - os: windows-latest
             shell: cmd
             command: build.cmd verify
             build: build.cmd build
+            package: build.cmd package
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +37,17 @@ jobs:
       - name: Archive tools with Unix executable permissions
         shell: ${{ matrix.shell }}
         run: tar -czf "${{ runner.temp }}/doinstall-tools.tar.gz" -C "${{ runner.temp }}/doinstall-tools" .
+      - name: Create native self-hosted installer
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.package }} --output-parent "${{ runner.temp }}/doinstall-installers"
+      - name: Archive installers with Unix executable permissions
+        shell: ${{ matrix.shell }}
+        run: tar -czf "${{ runner.temp }}/doinstall-installers.tar.gz" -C "${{ runner.temp }}/doinstall-installers" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: doinstall-installer-${{ matrix.os }}
+          path: ${{ runner.temp }}/doinstall-installers.tar.gz
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: doinstall-tools-${{ matrix.os }}

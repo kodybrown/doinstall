@@ -7,6 +7,66 @@ policy are responsibilities of the chosen build system, not the destination
 installer. Doinstall does not parse dotask settings or task files. It can launch
 pinned included tools through [runtime lifecycle actions](INCLUDED-TOOLS.md).
 
+## Install doinstall tools
+
+From the source checkout, doinstall packages itself using its own builder,
+runtime, and ZIP launcher:
+
+```powershell
+.\build.cmd package
+```
+
+The command builds native release tools and creates one self-extracting installer
+under `artifacts/installers/<os>-<architecture>/doinstall-<build>/`. It prints the
+actual runnable file path. The default application version comes from the root
+Cargo package; `package --version VERSION` sets an explicit application version,
+and `--output-parent DIRECTORY` changes the output parent. Existing differing
+builds are refused, not overwritten. Packaging never launches installation.
+The source recipe is [packaging/doinstall.yaml](../packaging/doinstall.yaml).
+End users running the resulting file need no Rust SDK or archiver.
+
+Run that printed installer and accept or customize its normal interactive form.
+On Windows the default install root is `%LOCALAPPDATA%\Programs\doinstall`, with
+additional commands enabled in its parent `%LOCALAPPDATA%\Programs`. The commands
+are `doinstall`, `doinstall-builder`, and `doinstall-server`; the unassembled
+`doinstall-launcher` stays alongside the real builder as template data. All four
+binaries and their license live in the active immutable build. The normal PATH
+policy recognizes an existing PATH directory and otherwise offers to add it.
+Open a new terminal after changing PATH. Unix defaults are `~/.local/lib/doinstall`
+and `~/.local/bin`; shell PATH setup remains explicit on Unix.
+
+The installed builder reports its actual sibling runtime/template paths:
+
+```powershell
+doinstall-builder --print-tool-paths
+$tools = doinstall-builder --print-tool-paths | ConvertFrom-Json
+```
+
+This read-only query returns JSON `Installer` and `LauncherTemplate` absolute
+paths, validated as native host tools. It resolves beside the real builder
+process, even when invoked through a command shim. Use these values when a build
+system needs native executable bytes; do not package a PATH shim. The query must
+be used alone. No registry scanning, receipt parsing, version-directory search,
+compatibility lookup, or build-system configuration is involved.
+Dotask's updated shared creator uses this query when tool paths are unspecified,
+so an installed builder on PATH needs no per-project tool-path settings.
+
+Upgrade by running another doinstall self-installer. Retained management files
+and immutable versions follow the same normal ownership contract. Manually copied
+tools in an unrecognized existing directory are refused; the installer does not
+adopt or migrate them. To uninstall on Windows:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\doinstall\installer\installer.exe" uninstall
+```
+
+Use the chosen root if customized; Unix uses `<root>/installer/installer`.
+Extraction sources remain intentionally retained. Native Windows x64 acceptance
+is recorded with the change; Linux execution of this self-hosted workflow is
+unverified, and macOS/ARM64 testing is deferred.
+
+## Assemble an application installer
+
 Run the build-machine tool with explicit installer, config, and output paths:
 
 ```sh

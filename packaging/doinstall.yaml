@@ -1,0 +1,19 @@
+# Native build-machine packaging fills in version, platform, architecture, payload,
+# and executable suffixes. This recipe never reads a consumer's task settings.
+schema: 1
+application:
+  id: doinstall
+  name: DoInstall
+  author: Kody Brown
+  description: Standalone installers and self-extracting package tools.
+runtime:
+  interactive: true
+  commands:
+    - {name: doinstall, executable: doinstall}
+    - {name: doinstall-builder, executable: doinstall-builder}
+    - {name: doinstall-server, executable: doinstall-server}
+  defaults:
+    common:
+      additional-command: true
+    windows:
+      add-to-path: true

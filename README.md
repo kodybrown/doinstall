@@ -8,6 +8,21 @@ creates owned commands/shortcuts, and retains an uninstaller. It works without
 dotask, .NET, or a language SDK on the destination machine; applications may have
 their own runtime requirements.
 
+## Install doinstall
+
+Build doinstall's own self-extracting installer from this source checkout:
+
+```powershell
+.\build.cmd package
+```
+
+Run the `doinstall-setup-v<version>-se.exe` printed by that command. It installs
+the tools and their command shims using the same ownership, update, and uninstall
+flow as any other application. No manual directory/shim setup is needed.
+Linux uses `./build.sh package`; macOS and ARM64 acceptance are deferred.
+See [tool installation](docs/INSTALLATION.md#install-doinstall-tools) for paths,
+uninstall, and tool discovery from dotask or another build system.
+
 ## Build from source
 
 Rust 1.95+, Cargo, rustfmt, clippy, and a host linker are required.

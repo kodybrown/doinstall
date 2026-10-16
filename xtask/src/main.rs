@@ -1,5 +1,6 @@
-//! Local development commands depend on Cargo alone, never on the installer
-//! product or dotask. Keep live tooling separate from rebuilt release binaries.
+//! Cargo bootstraps development without an installed doinstall or task runner.
+//! Packaging invokes freshly built tools; keep this helper outside their output.
+mod installer;
 use anyhow::{bail, ensure, Context, Result};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command};
@@ -31,7 +32,7 @@ fn cargo(arguments: &[&str]) -> Result<()> {
   }
   execute(&mut command)
 }
-fn target() -> Result<PathBuf> {
+fn metadata() -> Result<serde_json::Value> {
   let result = Command::new("cargo")
     .current_dir(root())
     .args(["metadata", "--format-version", "1", "--no-deps", "--locked"])
@@ -41,7 +42,10 @@ fn target() -> Result<PathBuf> {
     "Cargo metadata failed: {}",
     String::from_utf8_lossy(&result.stderr)
   );
-  let metadata: serde_json::Value = serde_json::from_slice(&result.stdout)?;
+  Ok(serde_json::from_slice(&result.stdout)?)
+}
+fn target() -> Result<PathBuf> {
+  let metadata = metadata()?;
   Ok(
     metadata["target_directory"]
       .as_str()
@@ -52,7 +56,9 @@ fn target() -> Result<PathBuf> {
 fn run() -> Result<()> {
   let args: Vec<_> = std::env::args().skip(1).collect();
   let Some(action) = args.first() else {
-    println!("Commands: build [--stage-dir DIR], verify, shim [--verify]");
+    println!(
+      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION], verify, shim [--verify]"
+    );
     return Ok(());
   };
   match action.as_str() {
@@ -77,6 +83,44 @@ fn run() -> Result<()> {
         }
       }
       println!("{}", output.display());
+      Ok(())
+    }
+    "package" => {
+      let mut output = None;
+      let mut version = None;
+      let mut options = args[1..].iter();
+      while let Some(option) = options.next() {
+        match option.as_str() {
+          "--output-parent" if output.is_none() => {
+            output = Some(PathBuf::from(options.next().context("--output-parent requires a directory")?))
+          }
+          "--version" if version.is_none() => {
+            version = Some(options.next().context("--version requires a value")?.to_owned())
+          }
+          _ => bail!("Use package [--output-parent DIR] [--version VERSION]"),
+        }
+      }
+      cargo(&["build", "--package", "doinstall", "--locked", "--release"])?;
+      let output = output.unwrap_or_else(|| {
+        root().join("artifacts/installers").join(format!(
+          "{}-{}",
+          std::env::consts::OS,
+          installer::architecture().unwrap_or(std::env::consts::ARCH)
+        ))
+      });
+      let metadata = metadata()?;
+      let version = version
+        .or_else(|| {
+          metadata["packages"]
+            .as_array()?
+            .iter()
+            .find(|package| package["name"] == "doinstall")?["version"]
+            .as_str()
+            .map(str::to_owned)
+        })
+        .context("Missing doinstall package version")?;
+      let artifact = installer::assemble(&target()?.join("release"), &output, &version)?;
+      println!("Installer: {}", artifact.display());
       Ok(())
     }
     "verify" => {

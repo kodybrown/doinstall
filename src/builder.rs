@@ -24,7 +24,31 @@ fn main() {
   }
 }
 fn run() -> Result<()> {
-  let mut arguments = std::env::args().skip(1);
+  let mut arguments = std::env::args().skip(1).peekable();
+  if arguments.peek().is_some_and(|arg| arg == "--print-tool-paths") {
+    arguments.next();
+    ensure!(arguments.next().is_none(), "--print-tool-paths must be used alone");
+    // A command shim launches this real binary. Resolve its own siblings,
+    // never package the PATH shim or infer an active version from directories.
+    let directory = std::env::current_exe()?
+      .parent()
+      .context("Builder has no directory")?
+      .to_path_buf();
+    let installer = directory.join(if cfg!(windows) {
+      "doinstall.exe"
+    } else {
+      "doinstall"
+    });
+    let template = directory.join(if cfg!(windows) {
+      "doinstall-launcher.exe"
+    } else {
+      "doinstall-launcher"
+    });
+    binary::validate(&installer, config::platform(), config::architecture())?;
+    binary::validate_launcher(&template, config::platform(), config::architecture())?;
+    println!("{}", serde_json::json!({"Installer":installer,"LauncherTemplate":template}));
+    return Ok(());
+  }
   let mut installer = None;
   let mut config = None;
   let mut output = None;
@@ -61,7 +85,7 @@ fn run() -> Result<()> {
       }
       "--help" | "-h" => {
         println!(
-                    "doinstall-builder --installer FILE --config FILE (--output NEW_DIRECTORY | --output-parent DIRECTORY)\n  --output-parent DIRECTORY  Derive directory from application build metadata\n  --self-extracting          Publish one ZIP self-extracting launcher\n  --launcher-template FILE   Precompiled target launcher (default: beside builder)\n  --result-file FILE         Write absolute FilePath as JSON outside the package\nPaths resolve from the current directory; payload resolves from the YAML.\nThe result file parent must exist. Distribute the complete package or its self-extracting launcher, without the builder."
+                    "doinstall-builder --installer FILE --config FILE (--output NEW_DIRECTORY | --output-parent DIRECTORY)\n  --output-parent DIRECTORY  Derive directory from application build metadata\n  --self-extracting          Publish one ZIP self-extracting launcher\n  --launcher-template FILE   Precompiled target launcher (default: beside builder)\n  --result-file FILE         Write absolute FilePath as JSON outside the package\n  --print-tool-paths         Used alone: report real adjacent Installer/LauncherTemplate paths as JSON\nPaths resolve from the current directory; payload resolves from the YAML.\nThe result file parent must exist. Distribute the complete package or its self-extracting launcher, without the builder."
                 );
         return Ok(());
       }

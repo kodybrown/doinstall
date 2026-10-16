@@ -417,3 +417,36 @@
   matching-name YAML, and --validate passed without installation or PATH changes.
   Git whitespace and local documentation links/anchors passed. No Rust source
   changed; runtime tests were not repeated for this documentation-only update.
+
+### 2026-10-16 Package doinstall using its own self-extracting installer
+
+- Add build package with output-parent/version overrides and a standalone
+  packaging/doinstall.yaml recipe. Snapshot all four native tools and their
+  license, assemble them through the public builder, and print the actual
+  self-extracting artifact path. Derive the default version from Cargo metadata;
+  preserve immutable output refusal. Packaging never installs the result. Keep
+  helper comments explicit about bootstrapping and freshly built product tools.
+- Install owned runtime/builder/server commands with additional commands enabled
+  by default. Keep the unassembled launcher template beside the real builder.
+  Use ordinary receipts, immutable builds, activation, upgrades, and retained
+  uninstall; refuse unrecognized manually copied state without adoption/migration.
+- Add builder --print-tool-paths to report validated native Installer and
+  LauncherTemplate sibling paths through command shims. Keep it independent of
+  task systems, registry/receipt searches, and version-directory discovery.
+  Document one-command creation, installation, discovery and uninstall; configure
+  native CI installer archives alongside the existing tool artifacts.
+- Verification: build.cmd verify passed all 122 Rust tests on Windows x64,
+  formatting, clippy, shim integrity/PE and Git whitespace checks. New lifecycle
+  acceptance installed tools, ran command shims, packaged another self-installer
+  using installed tools, upgraded, retained the previous build, and uninstalled.
+  Query tests covered missing siblings and mixed-command refusal. Refresh only
+  the build-helper hash; shim source and both bundled shim binaries are unchanged.
+- build.cmd package and release staging passed. The actual installer displayed
+  its themed form and canceled with terminal restoration and retained sources.
+  A temporary installation exposed its builder through a child-only PATH entry;
+  dotask created/validated an application launcher without tool-path settings,
+  then the tools were uninstalled. Persistent user/machine PATH stayed unchanged.
+  Installer tar creation and 35 local documentation links/anchors passed. Cargo
+  output remains C:/tmp/_rust/doinstall/target. Native Linux execution of this
+  workflow and remote CI remain unverified; macOS/ARM64 acceptance is deferred.
+  No active installation, publication, or push was performed.
