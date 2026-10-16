@@ -57,7 +57,8 @@ The launcher extracts into a fresh retained temporary directory (or
 `--extract-to PATH`) and starts the installer in the same console with direct
 input/output. Windows waits and returns the installer's status; Linux/macOS
 replace the launcher process with the installer. See the
-[self-extracting contract](docs/INSTALLATION.md#self-extracting-launchers).
+[step-by-step build-machine recipe](docs/INSTALLATION.md#build-machine-recipe-for-people-and-ai-assistants)
+and [self-extracting contract](docs/INSTALLATION.md#self-extracting-launchers).
 
 ## Interactive installer
 

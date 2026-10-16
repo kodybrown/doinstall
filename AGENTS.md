@@ -15,6 +15,9 @@
 - README.md introduces the product; docs/INSTALLATION.md owns the YAML and
   installation contract. Preserve receipts, immutable builds, activation recovery,
   and refusal of unrecognized existing state. No compatibility loaders or migrations.
+- For consumer package creation, follow the self-extracting build-machine recipe
+  in docs/INSTALLATION.md. Use prebuilt target runtime/launcher tools and the
+  builder's result FilePath; do not guess delivery names or compile per application.
 - The shipped installer accepts resolved application/runtime YAML, not build
   steps. Assembly belongs to doinstall-builder on the build machine.
 - Shim source/assets belong here. Verify hashes ordinarily; source changes require

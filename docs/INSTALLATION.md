@@ -50,6 +50,65 @@ There are no compatibility loaders, conversions, or migrations.
 
 ## Self-extracting launchers
 
+### Build-machine recipe for people and AI assistants
+
+1. Obtain `doinstall-builder[.exe]` for the build machine, and matching
+   `doinstall[.exe]` / `doinstall-launcher[.exe]` tools for the destination OS and
+   architecture, from the same doinstall build. The launcher is a template, not
+   a generic ZIP extractor. Do not substitute a command shim for either target
+   executable. Prebuilt tools need no Rust SDK; building these tools from source
+   is a separate developer step (`build --stage-dir PATH`).
+2. Build/publish the application into a payload directory. Write resolved YAML
+   with application identity/version, target platform/architecture, payload path,
+   and runtime settings. The native builder does not run build steps. For example,
+   save this as `installer.yaml` beside a `published/` directory containing
+   `example.exe`:
+
+   ```yaml
+   schema: 1
+   application: {id: example, name: Example App, version: 1.2.0}
+   platform: windows
+   architecture: x64
+   payload: ./published
+   runtime:
+     interactive: true
+     commands:
+       - {name: example, executable: example.exe}
+     defaults:
+       windows: {add-to-path: false}
+   ```
+
+3. Create the result file's parent, then run the builder. From that project
+   directory in PowerShell, with tools under `C:/Tools/doinstall`:
+
+   ```powershell
+   New-Item -ItemType Directory -Force ./artifacts | Out-Null
+   & C:/Tools/doinstall/doinstall-builder.exe --installer C:/Tools/doinstall/doinstall.exe --launcher-template C:/Tools/doinstall/doinstall-launcher.exe --config ./installer.yaml --output ./artifacts/example-1.2.0 --self-extracting --result-file ./artifacts/example-result.json
+   $launcher = (Get-Content ./artifacts/example-result.json -Raw | ConvertFrom-Json).FilePath
+   & $launcher --extract-to ./artifacts/validation-source -- --validate
+   ```
+
+   The output directory must be fresh. Use the returned `FilePath`; do not
+   reconstruct it from names. The result file must remain outside the package.
+   Validation extracts and retains sources but does not install the application.
+   On Linux/macOS use host/target tools without `.exe`, appropriate YAML target
+   values, and executable payload names. The full builder invocation is below.
+4. Distribute only `artifacts/example-1.2.0/example-setup-v1.2.0-se.exe`.
+   Running it opens the installer in the same console. For automation, pass
+   `--non-interactive` and explicit temporary installation/command roots when
+   testing. Use `--extract-to PATH` for a chosen new/empty extraction directory;
+   extracted sources remain after the installer exits. See the details below
+   for signing, cross-platform packaging, and retained sources.
+
+Set optional literal delivery filenames under `packaging` in the source YAML;
+the builder derives the matching installer YAML name automatically. Keep
+application build steps and dotask settings outside native resolved YAML.
+If using dotask, its separately installed shared adapters and source build-step
+contract are documented in
+[dotask's installer guide](https://github.com/kodybrown/dotask/blob/develop/docs/INSTALLATION.md#self-extracting-build-and-gather-workflow).
+
+### Container, extraction, and process contract
+
 ```sh
 doinstall-builder --installer /tools/doinstall --config installer.yaml --output /delivery/example-1.0 --self-extracting --launcher-template /tools/doinstall-launcher --result-file /delivery/result.json
 ```

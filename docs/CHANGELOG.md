@@ -404,3 +404,16 @@
   Linux run could not start because the acceptance WSL distro's disk file is
   missing. Native macOS/ARM64, distribution signing/notarization, and remote CI
   remain unverified.
+
+### 2026-10-16 Document self-extracting package creation for consumers and AI assistants
+
+- Add a complete build-machine recipe with minimal resolved YAML, prebuilt host
+  and target tool selection, the builder command, result FilePath consumption,
+  retained extraction, validation, and the exact distributable. Link it from the
+  README and agent instructions, and point dotask consumers to its separate
+  adapter recipe. Keep the runtime/packaging contract in INSTALLATION.md.
+- Verification: execute the documented Windows PowerShell/YAML recipe using
+  prebuilt tools in a disposable project. Package assembly, custom extraction,
+  matching-name YAML, and --validate passed without installation or PATH changes.
+  Git whitespace and local documentation links/anchors passed. No Rust source
+  changed; runtime tests were not repeated for this documentation-only update.
