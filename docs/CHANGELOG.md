@@ -390,3 +390,17 @@
   git diff --check passed. Cargo's evaluated target directory remains external
   at C:/tmp/_rust/doinstall/target. Runtime tests were not repeated for this
   configuration-only change; the running installer was left undisturbed.
+
+### 2026-10-16 Revalidate self-extracting delivery for develop integration
+
+- Rebase the self-extracting launcher and stable formatter changes onto the
+  current develop baseline. The only additional baseline change is a Git
+  ignore rule; the previously tested implementation remains unchanged.
+- Verification: build.cmd verify passed all 120 Rust tests on Windows x64,
+  formatting with zero warnings, clippy, shim integrity/PE checks, and
+  git diff --check. Cargo's evaluated target directory remains external at
+  C:/tmp/_rust/doinstall/target. Tests use disposable installation roots.
+- The earlier exact-source Ubuntu x64 verification passed 102 tests. A repeat
+  Linux run could not start because the acceptance WSL distro's disk file is
+  missing. Native macOS/ARM64, distribution signing/notarization, and remote CI
+  remain unverified.
