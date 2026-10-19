@@ -25,6 +25,10 @@ pub fn validate(package: &Package) -> Result<()> {
   for file in &package.runtime.settings_files {
     files::relative(&file.source)?;
     ensure!(!file.destination.is_empty(), "Settings destination is empty");
+    ensure!(
+      !matches!(file.format, SettingsFormat::Text) || file.set.is_empty(),
+      "Text settings do not support set mappings"
+    );
     for (pointer, input) in &file.set {
       ensure!(
         pointer.starts_with('/') && valid_pointer(pointer),
@@ -57,11 +61,18 @@ fn render(file: &SettingsFile, payload: &Path, values: Option<&BTreeMap<String, 
   let source = payload.join(files::relative(&file.source)?);
   files::safe_path(&source)?;
   ensure!(source.is_file(), "Missing settings defaults: {}", source.display());
+  // Plain-text formats (INI, .settings, etc.) have no shared document schema.
+  // Copy their original bytes, including encoding/BOM/EOLs, without templating.
+  if matches!(file.format, SettingsFormat::Text) {
+    ensure!(file.set.is_empty(), "Text settings do not support set mappings");
+    return Ok(fs::read(&source)?);
+  }
   let original = fs::read_to_string(&source)?;
   let text = original.strip_prefix('\u{feff}').unwrap_or(&original);
   let mut document: Value = match file.format {
     SettingsFormat::Yaml => serde_saphyr::from_str(text)?,
     SettingsFormat::Json => serde_json::from_str(text)?,
+    SettingsFormat::Text => unreachable!("text defaults are copied above"),
   };
   for (pointer, input) in &file.set {
     let target = document
@@ -94,6 +105,7 @@ fn render(file: &SettingsFile, payload: &Path, values: Option<&BTreeMap<String, 
       bytes.push(b'\n');
       bytes
     }
+    SettingsFormat::Text => unreachable!("text defaults are copied above"),
   })
 }
 

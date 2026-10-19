@@ -475,3 +475,17 @@
   Filekeep's self-extracting consumer passed temporary-root install, custom
   configuration, backup, reinstall/upgrade, and retained uninstall acceptance with
   persistent user/machine PATH unchanged. Native Unix/ARM64 acceptance is unverified.
+
+### 2026-10-19 Native app-data paths and plain-text editable settings
+
+- Add `${app-data}` for Roaming AppData on Windows and XDG configuration on Unix,
+  honoring absolute redirected environment paths and falling back to the user's
+  platform configuration directory. Keep the existing `${config-home}` contract.
+- Support `format: text` settings defaults with byte-exact copying and preservation
+  of existing user files. Reject structured `set` mappings for text before writes.
+- Document the native path token and INI/application-specific settings recipe.
+- Verification: focused settings/path tests and `build.cmd verify` passed on
+  Windows x64, including native install/upgrade/uninstall with temporary redirected
+  app-data roots, encoding/BOM/EOL preservation, and read-only validation. Evaluated
+  Cargo target/build directories remain `C:/tmp/_rust/doinstall/target`. No active
+  tool installation or persistent PATH changed; Unix native acceptance not run.

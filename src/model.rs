@@ -141,6 +141,7 @@ pub struct SettingsFile {
 pub enum SettingsFormat {
   Yaml,
   Json,
+  Text,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

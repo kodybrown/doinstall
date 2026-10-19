@@ -203,3 +203,49 @@ fn pending_retry_recovers_recorded_settings_ownership_without_duplicates() {
   fixture.uninstall(true);
   assert!(!fixture.settings.exists());
 }
+
+#[test]
+fn text_settings_use_native_app_data_and_preserve_bytes_on_upgrade_and_uninstall() {
+  let fixture = Fixture::new();
+  let app_data = fixture.temp.path().join("redirected app data");
+  let destination = app_data.join("probe/probe.settings");
+  // Not JSON or YAML, and not UTF-8: text copying must not decode or reserialize.
+  let original = b"\xff\xfe[\x00s\x00]\x00\r\x00\n\x00";
+  fs::write(fixture.temp.path().join("payload/defaults.settings"), original).unwrap();
+  fixture.change(|package| {
+    package["runtime"]["settings-files"][0] = json!({"source":"defaults.settings", "destination":"${app-data}/probe/probe.settings",
+      "format":"text","if-exists":"preserve"});
+  });
+  let run = |arguments: &[&str]| {
+    let output = Command::new(env!("CARGO_BIN_EXE_doinstall"))
+      .arg("--config")
+      .arg(&fixture.config)
+      .arg("--non-interactive")
+      .env("APPDATA", &app_data)
+      .env("XDG_CONFIG_HOME", &app_data)
+      .args(arguments)
+      .output()
+      .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+  };
+  run(&["--validate"]);
+  assert!(!app_data.exists());
+  run(&[]);
+  assert_eq!(fs::read(&destination).unwrap(), original);
+  let edited = b"# user comments\r\nwidth=120\r\n";
+  fs::write(&destination, edited).unwrap();
+  fixture.change(|package| package["application"]["version"] = "2.0".into());
+  run(&[]);
+  assert_eq!(fs::read(&destination).unwrap(), edited);
+  fixture.uninstall(false);
+  assert_eq!(fs::read(&destination).unwrap(), edited);
+}
+
+#[test]
+fn text_settings_reject_structured_overrides_before_creating_anything() {
+  let fixture = Fixture::new();
+  fixture.change(|package| package["runtime"]["settings-files"][0]["format"] = "text".into());
+  assert!(!fixture.run(&["--validate"]).status.success());
+  assert!(!fixture.root.exists());
+  assert!(!fixture.settings.exists());
+}

@@ -322,7 +322,11 @@ Profiles are selected by `--profile NAME`, or optional `detect` strings matching
 `XDG_CURRENT_DESKTOP` components. Multiple matches fail and require an explicit
 profile. Omarchy can be selected explicitly; distribution detection is not inferred
 from a desktop identifier. Unknown fields/inputs and invalid types/choices fail.
-Templates support `${home}`, `${local-app-data}`, `${config-home}`, and named inputs.
+Templates support `${home}`, `${local-app-data}`, `${config-home}`, `${app-data}`, and named inputs.
+`${app-data}` uses `%APPDATA%` (Roaming) on Windows and absolute `$XDG_CONFIG_HOME`
+on Unix, falling back to `<home>/AppData/Roaming` and `<home>/.config`, respectively.
+Empty or relative environment paths use the fallback. `${config-home}` keeps its
+existing XDG behavior on every platform, including Windows.
 Unresolved references fail. Built-in path inputs must resolve to absolute paths.
 
 Custom `string` inputs may specify `expand: false` to retain literal application
@@ -334,7 +338,7 @@ paths or lifecycle command templates.
 
 ### Initialize editable settings
 
-Use `runtime.settings-files` to create YAML or JSON application settings outside
+Use `runtime.settings-files` to create YAML, JSON, or plain-text application settings outside
 the immutable application builds, in interactive or unattended installation.
 This is an installer-native operation; it requires no bundled task runner, script,
 or application-specific installer code.
@@ -365,10 +369,24 @@ runtime:
 installer inputs and must be an absolute file path outside application, command,
 payload, shortcut, explicitly declared settings, and lifecycle-managed locations.
 Duplicate/overlapping destinations, links, junctions, and directory destinations
-are rejected. `format` is `yaml` or `json`; `if-exists: preserve` is required and
+are rejected. `format` is `yaml`, `json`, or `text`; `if-exists: preserve` is required and
 is the only supported policy.
 
-Each `set` key is an existing RFC 6901 JSON pointer identifying a scalar in the
+For `format: text`, the source is copied byte-for-byte without decoding, parsing,
+or template expansion. This supports INI and application-specific `.settings`
+files, preserving encoding, BOM, comments, and line endings. `set` must be omitted
+or empty for text. For example:
+
+```yaml
+runtime:
+  settings-files:
+    - source: defaults/example.settings
+      destination: '${app-data}/example/example.settings'
+      format: text
+      if-exists: preserve
+```
+
+For YAML/JSON, each `set` key is an existing RFC 6901 JSON pointer identifying a scalar in the
 defaults document, including array indices. Its value is an input name. Resolved
 input values are copied with their types preserved; scalar-type changes, missing
 inputs, and missing/malformed pointers are errors. Values are serialized safely,

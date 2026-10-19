@@ -136,11 +136,29 @@ pub fn builtins() -> Result<BTreeMap<String, String>> {
     std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).context("Home directory is unavailable")?;
   let local = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| format!("{home}/.local/share"));
   let config = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{home}/.config"));
+  // Keep config-home's existing XDG contract. app-data follows the native
+  // roaming configuration location on Windows and XDG configuration on Unix.
+  let app_data =
+    application_data_directory(&home, std::env::var("APPDATA").ok(), std::env::var("XDG_CONFIG_HOME").ok())?;
   Ok(BTreeMap::from([
     ("home".into(), home),
     ("local-app-data".into(), local),
     ("config-home".into(), config),
+    ("app-data".into(), app_data),
   ]))
+}
+
+fn application_data_directory(home: &str, roaming: Option<String>, xdg: Option<String>) -> Result<String> {
+  let selected = if cfg!(windows) { roaming } else { xdg };
+  let path = selected.filter(|value| !value.is_empty() && Path::new(value).is_absolute());
+  let fallback = if cfg!(windows) {
+    "AppData/Roaming"
+  } else {
+    ".config"
+  };
+  let path = path.unwrap_or_else(|| Path::new(home).join(fallback).to_string_lossy().into_owned());
+  ensure!(Path::new(&path).is_absolute(), "Application data directory must be absolute");
+  Ok(path)
 }
 pub fn expand(value: &str, values: &BTreeMap<String, Value>) -> Result<String> {
   let mut output = value.to_string();
@@ -555,6 +573,27 @@ pub fn command_directory(values: &BTreeMap<String, Value>) -> Result<PathBuf> {
 mod tests {
   use super::*;
   use serde_json::json;
+  #[test]
+  fn application_data_uses_roaming_or_xdg_and_rejects_relative_environment_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home").to_string_lossy().into_owned();
+    let roaming = temp.path().join("redirected roaming").to_string_lossy().into_owned();
+    let xdg = temp.path().join("xdg").to_string_lossy().into_owned();
+    let selected = application_data_directory(&home, Some(roaming.clone()), Some(xdg.clone())).unwrap();
+    assert_eq!(selected, if cfg!(windows) { roaming } else { xdg });
+    for value in [None, Some(String::new()), Some("relative/path".into())] {
+      let selected = application_data_directory(&home, value.clone(), value).unwrap();
+      assert_eq!(
+        Path::new(&selected),
+        Path::new(&home).join(if cfg!(windows) {
+          "AppData/Roaming"
+        } else {
+          ".config"
+        })
+      );
+    }
+    assert!(application_data_directory("relative/home", None, None).is_err());
+  }
   fn package() -> Package {
     serde_json::from_value(json!({"schema":1,"application":{"id":"test","name":"Test","version":"1"},
       "platform":platform(),"architecture":architecture(),"payload":"payload","runtime":{"commands":[{"name":"test","executable":"test.exe"}]}})).unwrap()
