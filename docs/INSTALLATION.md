@@ -235,9 +235,19 @@ Existing terminal requirements for interactive mode still apply.
 Sign the completed launcher after packaging, not the input template. Input
 template signatures are removed because they cover only the original bytes.
 The footer reader accounts for PE certificate and Mach-O signature trailers.
-Native macOS packaging extends `__LINKEDIT` and uses the OS-provided `codesign`
-for ad-hoc signing. When packaging a macOS target on another OS, sign the final
-file on macOS before running it (`codesign --force --sign - FILE`); trusted
+For Mach-O, assembly removes the old `LC_CODE_SIGNATURE` load command as well
+as its blob; an empty command is not an unsigned executable to Apple's signer.
+Code/data offsets stay fixed. The appended container extends `__LINKEDIT` and its
+trailing string-table range as unreferenced bytes, preserving existing symbol
+offsets and preventing the signing allocator from discarding the payload. This
+requires the original string table to end at the unsigned template boundary,
+apart from up to 15 alignment bytes; unsupported layouts fail before signing.
+See Apple's [signature reader](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/machorep.cpp)
+and [link-edit checks](https://github.com/apple-oss-distributions/cctools/blob/main/libstuff/checkout.c).
+Native macOS packaging uses the OS-provided `codesign` for ad-hoc signing and
+then runs `codesign --verify --strict` on the result. When packaging a macOS target
+on another OS, sign the final file on macOS before running it
+(`codesign --force --sign - FILE`); trusted
 distribution signing/notarization remains the producer's responsibility.
 When copying a Unix launcher from Windows, set its executable bit on Unix.
 

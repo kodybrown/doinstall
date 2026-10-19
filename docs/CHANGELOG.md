@@ -545,3 +545,30 @@
   local documentation links passed. Cargo target/build directories remain
   C:/tmp/_rust/doinstall/target. Persistent PATH and active installations were
   unchanged. No push, tag, hosted rerun or publication was performed.
+
+### 2026-10-19 Correct Mach-O preparation for self-extracting code signing
+
+- Inspect hosted main run 39341579459: Windows/Linux delivery acceptance and
+  shim builds passed, and the macOS path-fixture tests passed. Seven macOS
+  self-extracting integration tests then failed when codesign rejected the
+  completed launcher as an invalid signature format.
+- Remove the old Mach-O LC_CODE_SIGNATURE command together with its signature
+  blob instead of leaving an empty command for Apple's signer to parse. Compact
+  load commands into their existing header space without moving native data or
+  changing existing code/data offsets.
+- Declare appended container bytes in the trailing string-table range and
+  __LINKEDIT segment, preserving existing symbol offsets and allowing Apple's
+  signing allocator to retain all delivery bytes. Refuse unsupported table
+  layouts and stale commands before updating the file. Native macOS assembly
+  now verifies the completed ad-hoc signature with codesign --verify --strict
+  before checking the embedded bundle. Keep the existing container format.
+- Document the Mach-O signing contract and distinguish observed hosted success
+  from pending native acceptance. Add three portable structural regression tests
+  for signature-command removal, x64/ARM64 link-edit/table extents, preserved
+  data/offsets, new signature trailers and malformed-input refusal.
+- Verification: build.cmd verify passed all 140 Windows Rust tests, formatting,
+  strict clippy, shim integrity and whitespace. Five release boundary tests,
+  actionlint 1.7.11 and documentation links passed. Cargo target/build directories
+  remain C:/tmp/_rust/doinstall/target. Native macOS code signing/execution still
+  needs a hosted rerun; Windows structural tests do not prove it. Persistent PATH
+  and active installations were unchanged; no push, tag or publication occurred.

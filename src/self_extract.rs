@@ -96,7 +96,9 @@ fn template_bytes(path: &Path) -> Result<Vec<u8>> {
       && u64::from_le_bytes(record[40..48].try_into().unwrap()) == TEMPLATE_ROLE_B),
     "Not a doinstall launcher template"
   );
-  if let Some(field) = signature {
+  if &bytes[..4] == b"\xcf\xfa\xed\xfe" {
+    binary::remove_macho_signature_command(&mut bytes)?;
+  } else if let Some(field) = signature {
     bytes[field as usize..field as usize + 8].fill(0);
   }
   Ok(bytes)
@@ -208,7 +210,7 @@ pub fn assemble(
   file.sync_all()?;
   drop(file);
   if platform == "macos" {
-    binary::extend_macho_linkedit(output, architecture)?;
+    binary::extend_macho_linkedit(output, architecture, archive_start)?;
   }
   #[cfg(unix)]
   {
@@ -224,6 +226,11 @@ pub fn assemble(
       .arg(output)
       .status()?;
     ensure!(status.success(), "Cannot ad-hoc sign the completed macOS launcher");
+    let status = std::process::Command::new("/usr/bin/codesign")
+      .args(["--verify", "--strict"])
+      .arg(output)
+      .status()?;
+    ensure!(status.success(), "Completed macOS launcher failed code signature verification");
   }
   // Verify the exact deliverable, including any platform signing edits.
   Bundle::open(output)?;

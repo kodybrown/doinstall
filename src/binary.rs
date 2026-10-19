@@ -137,11 +137,57 @@ pub(crate) fn validate_launcher(path: &Path, platform: &str, architecture: &str)
   Ok(())
 }
 
-/// Make the appended container part of the last Mach-O segment before signing.
-/// codesign expects the signature at the end of __LINKEDIT, not an overlay
-/// outside its declared file range. This also works when packaging on Windows.
+/// Remove the signature command after its blob has been truncated from a template.
+/// A zeroed LC_CODE_SIGNATURE still advertises a signature to Apple's codesign,
+/// which then tries to read a SuperBlob at offset zero and rejects the Mach-O.
+/// Compact only the load commands, leaving code/data and all file offsets fixed.
 #[allow(dead_code)] // Only builder/launcher container code consumes this operation.
-pub(crate) fn extend_macho_linkedit(path: &Path, architecture: &str) -> Result<()> {
+pub(crate) fn remove_macho_signature_command(bytes: &mut [u8]) -> Result<()> {
+  ensure!(
+    bytes.len() >= 32 && &bytes[..4] == b"\xcf\xfa\xed\xfe",
+    "Expected Mach-O64 template"
+  );
+  let count = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
+  let commands = u32::from_le_bytes(bytes[20..24].try_into().unwrap()) as usize;
+  let end = 32usize.checked_add(commands).context("Mach-O command overflow")?;
+  ensure!(
+    end <= bytes.len() && count as usize <= commands / 8,
+    "Invalid Mach-O load commands"
+  );
+  let mut position = 32;
+  let mut signature = None;
+  for _ in 0..count {
+    ensure!(position + 8 <= end, "Truncated Mach-O load command");
+    let kind = u32::from_le_bytes(bytes[position..position + 4].try_into().unwrap());
+    let size = u32::from_le_bytes(bytes[position + 4..position + 8].try_into().unwrap()) as usize;
+    ensure!(
+      size >= 8 && size.is_multiple_of(8) && size <= end - position,
+      "Invalid Mach-O command size"
+    );
+    if kind == 0x1d {
+      ensure!(size == 16 && signature.is_none(), "Invalid Mach-O code signature command");
+      signature = Some((position, size));
+    }
+    position += size;
+  }
+  ensure!(position == end, "Mach-O command count/size mismatch");
+  if let Some((position, size)) = signature {
+    bytes.copy_within(position + size..end, position);
+    bytes[end - size..end].fill(0);
+    bytes[16..20].copy_from_slice(&(count - 1).to_le_bytes());
+    bytes[20..24].copy_from_slice(&((commands - size) as u32).to_le_bytes());
+  }
+  Ok(())
+}
+
+/// Keep the appended container in the trailing string-table range of __LINKEDIT.
+/// Apple's codesign_allocate rewrites link-edit tables and requires their ranges
+/// to fill the segment. Extending just the segment leaves an unrecognized gap;
+/// retaining the container as unreferenced string-table bytes preserves it during
+/// signing without changing any existing symbol's string offset. The footer is
+/// already 16-byte aligned, so signing adds no gap before its signature trailer.
+#[allow(dead_code)] // Only builder/launcher container code consumes this operation.
+pub(crate) fn extend_macho_linkedit(path: &Path, architecture: &str, template_length: u64) -> Result<()> {
   let mut file = OpenOptions::new().read(true).write(true).open(path)?;
   let length = file.metadata()?.len();
   let mut header = [0; 32];
@@ -151,6 +197,7 @@ pub(crate) fn extend_macho_linkedit(path: &Path, architecture: &str) -> Result<(
   ensure!(end <= length, "Invalid Mach-O commands");
   let mut position = 32;
   let mut linkedit = None;
+  let mut strings = None;
   let mut last_segment = 0;
   while position < end {
     file.seek(SeekFrom::Start(position))?;
@@ -159,6 +206,17 @@ pub(crate) fn extend_macho_linkedit(path: &Path, architecture: &str) -> Result<(
     let kind = u32::from_le_bytes(command[..4].try_into().unwrap());
     let size = u32::from_le_bytes(command[4..].try_into().unwrap()) as u64;
     ensure!(size >= 8 && size <= end - position, "Invalid Mach-O command size");
+    ensure!(kind != 0x1d, "Remove the template's signature command before extending Mach-O");
+    if kind == 2 {
+      ensure!(size == 24 && strings.is_none(), "Invalid Mach-O symbol table command");
+      let mut table = [0; 16];
+      file.read_exact(&mut table)?;
+      strings = Some((
+        position,
+        u32::from_le_bytes(table[8..12].try_into().unwrap()) as u64,
+        u32::from_le_bytes(table[12..16].try_into().unwrap()) as u64,
+      ));
+    }
     if kind == 0x19 {
       ensure!(size >= 72, "Invalid Mach-O segment");
       let mut segment = [0; 64];
@@ -173,17 +231,32 @@ pub(crate) fn extend_macho_linkedit(path: &Path, architecture: &str) -> Result<(
     position += size;
   }
   let (command, offset) = linkedit.context("Missing __LINKEDIT segment")?;
+  let (table, string_offset, string_size) = strings.context("Missing Mach-O string table")?;
+  let string_end = string_offset.checked_add(string_size).context("Mach-O string table overflow")?;
+  ensure!(
+    string_offset >= offset
+      && string_size > 0
+      && string_end <= template_length
+      && template_length - string_end < 16
+      && template_length <= length,
+    "Mach-O string table must end at the unsigned template boundary (with at most 15 alignment bytes)"
+  );
   ensure!(
     offset == last_segment && offset < length,
     "__LINKEDIT must be the last file segment"
   );
   let size = length - offset;
+  let string_size =
+    u32::try_from(length - string_offset).context("Mach-O container exceeds string table size limit")?;
+  ensure!(matches!(architecture, "x64" | "arm64"), "Unsupported Mach-O architecture");
   let page = if architecture == "arm64" { 16384 } else { 4096 };
   let virtual_size = size.div_ceil(page) * page;
   file.seek(SeekFrom::Start(command + 32))?;
   file.write_all(&virtual_size.to_le_bytes())?;
   file.seek(SeekFrom::Start(command + 48))?;
   file.write_all(&size.to_le_bytes())?;
+  file.seek(SeekFrom::Start(table + 20))?;
+  file.write_all(&string_size.to_le_bytes())?;
   file.sync_all()?;
   Ok(())
 }

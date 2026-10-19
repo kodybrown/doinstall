@@ -4,8 +4,9 @@ The release workflow builds standalone native doinstall tools with Cargo. It doe
 not need an installed doinstall, dotask, .NET SDK, or consumer project checkout.
 Once the first release has been published, consumers can pin a GitHub release
 instead of building this repository. Local acceptance passed on both release
-platforms. The first hosted run passed Linux delivery acceptance and shim builds;
-Windows/macOS UI fixture fixes await a hosted rerun. Release publication is pending.
+platforms. Hosted Windows/Linux delivery acceptance and shim builds passed.
+macOS passed the fixture-path corrections, then failed self-extracting signing;
+the Mach-O signing correction awaits a hosted rerun. Release publication is pending.
 
 ## Release identity and compatibility
 
@@ -276,6 +277,9 @@ passed Linux packaging/acceptance and both shim builds. Its Windows/macOS failur
 came from UI fixtures using unresolved temporary-path aliases; the fix resolves
 fixture parents before creating temporary roots, including file-backed
 integration and self-extracting unit fixtures. All 137 Windows tests also passed
-with TEMP/TMP deliberately set through a directory junction. The revised workflow
-still needs a hosted run, including native macOS verification. Signing and
-publication remain pending.
+with TEMP/TMP deliberately set through a directory junction. A subsequent hosted
+run passed Windows/Linux deliveries, the shim builds, and
+macOS's earlier path cases. macOS then reached self-extracting tests and failed
+because assembly left an empty signature command and an unaccounted link-edit
+tail. The corrected Mach-O preparation still requires native macOS verification;
+trusted distribution signing and publication remain pending.
