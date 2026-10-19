@@ -212,6 +212,7 @@ pub(crate) fn verify_entries(package: &Package, payload: &Path) -> Result<()> {
     }
   }
   crate::workflow::validate_entries(package, payload)?;
+  crate::settings_files::validate_sources(package, payload)?;
   Ok(())
 }
 pub fn install(config_file: &Path, package: Package, options: &Options) -> Result<()> {
@@ -289,6 +290,8 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
       "Settings must not claim command launchers or shortcuts"
     );
   }
+  let initialized_settings =
+    crate::settings_files::prepare(&package, &payload, &root, &bin, &values, &settings, &prepared)?;
   let mut tool_values = values.clone();
   tool_values.insert("build-dir".into(), serde_json::json!(directory));
   tool_values.insert("context-file".into(), serde_json::json!(root.join("installer/context.json")));
@@ -334,6 +337,14 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
   console::summary()?;
   console::checkpoint("Checking installation ownership...", true)?;
   let _root_lock = lock(&root)?;
+  // Settings may be shared by different application roots. Acquire destination
+  // locks in a stable order so their initialization cannot race another installer.
+  let mut settings_destinations: Vec<_> = initialized_settings.iter().map(|file| &file.destination).collect();
+  settings_destinations.sort();
+  let _settings_locks: Vec<_> = settings_destinations
+    .into_iter()
+    .map(|path| lock(path))
+    .collect::<Result<_>>()?;
   let management = root.join("installer");
   let mut old = if root.exists() {
     Some(load_receipt(&root).context(
@@ -391,6 +402,11 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
     let receipt = old.get_or_insert_with(|| pending.clone());
     receipt.launchers = owned;
     receipt.builds.extend(pending.builds);
+    for setting in &pending.settings {
+      if !receipt.settings.contains(setting) {
+        receipt.settings.push(setting.clone());
+      }
+    }
     for directory in pending.shortcut_directories {
       if !receipt.shortcut_directories.contains(&directory) {
         receipt.shortcut_directories.push(directory);
@@ -530,6 +546,18 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
   files::write_atomic(&management.join(engine_name()), &fs::read(&engine)?)?;
   fs::set_permissions(management.join(engine_name()), fs::metadata(&engine)?.permissions())?;
   files::write_atomic(&management.join("installer.yaml"), yaml.as_bytes())?;
+  for file in &initialized_settings {
+    if crate::settings_files::initialize(file)? {
+      let path = as_string(&file.destination);
+      if !receipt.settings.contains(&path) {
+        receipt.settings.push(path);
+      }
+      files::write_yaml(&pending_path, &receipt)?;
+      console::message(&format!("Created settings: {}", file.destination.display()));
+    } else {
+      console::message(&format!("Preserved existing settings: {}", file.destination.display()));
+    }
+  }
   let mut workflow = if package.runtime.lifecycle.is_empty() {
     None
   } else {
@@ -656,6 +684,7 @@ pub fn uninstall(root: &Path, options: &Options) -> Result<()> {
     console::settings()?;
     let input = Input {
       group_index: None,
+      expand: true,
       kind: "boolean".into(),
       required: true,
       prompt: Some(format!("Uninstall {} from {}?", receipt.app_id, root.display())),

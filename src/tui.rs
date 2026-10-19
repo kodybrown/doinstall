@@ -290,7 +290,7 @@ fn choices(siv: &mut Cursive) {
         input.prompt.as_deref().unwrap_or(&name).to_owned()
       };
       let raw = state.values.get(&name).and_then(|v| config::text(v).ok()).unwrap_or_default();
-      let raw = config::expand(&raw, &state.values).unwrap_or(raw);
+      let raw = config::expand_input(input, &raw, &state.values).unwrap_or(raw);
       let explicit = state.options.values.contains_key(&name)
         || (name == "additional-command" && state.options.values.contains_key("bin-dir"));
       if input.kind == "boolean" {
@@ -809,6 +809,28 @@ mod tests {
       values,
     );
     (temp, siv, root)
+  }
+
+  #[test]
+  fn literal_application_templates_stay_literal_in_the_dialog() {
+    let (_temp, mut existing, _root) = fixture();
+    let mut action = existing.user_data::<State>().unwrap().action.clone();
+    let Action::Install { package, .. } = &mut action else {
+      unreachable!()
+    };
+    package.runtime.inputs.insert(
+      "filename".into(),
+      serde_json::from_value(json!({
+        "type":"string","expand":false,"default":"${HOST}-${date:yyyyMMdd}.txt"
+      }))
+      .unwrap(),
+    );
+    let values = config::default_values(package, &Options::default()).unwrap();
+    let mut siv = Cursive::new();
+    setup(&mut siv, action, Options::default(), values);
+    let mut runner = siv.runner(backend(Arc::new(AtomicUsize::new(100))));
+    runner.refresh();
+    assert_eq!(form_values(&mut runner)["filename"], "${HOST}-${date:yyyyMMdd}.txt");
   }
   #[test]
   fn tab_checkbox_dependencies_and_reverse_tab_use_standard_controls() {

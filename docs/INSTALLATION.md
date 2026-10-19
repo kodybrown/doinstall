@@ -325,6 +325,73 @@ from a desktop identifier. Unknown fields/inputs and invalid types/choices fail.
 Templates support `${home}`, `${local-app-data}`, `${config-home}`, and named inputs.
 Unresolved references fail. Built-in path inputs must resolve to absolute paths.
 
+Custom `string` inputs may specify `expand: false` to retain literal application
+templates such as `${HOST}-${date:yyyyMMdd}.txt`. This applies to defaults, CLI
+overrides, plain prompts, and the dialog. Other inputs continue expanding by
+default; built-in inputs cannot disable expansion. Literal values should be
+copied through settings-file `set` mappings, not interpolated into installer
+paths or lifecycle command templates.
+
+### Initialize editable settings
+
+Use `runtime.settings-files` to create YAML or JSON application settings outside
+the immutable application builds, in interactive or unattended installation.
+This is an installer-native operation; it requires no bundled task runner, script,
+or application-specific installer code.
+
+```yaml
+runtime:
+  inputs:
+    backup-folder:
+      type: path
+      default: '${home}/Backups'
+      prompt: Backup folder
+    backup-name:
+      type: string
+      expand: false
+      default: '${HOST}-${date:yyyyMMdd}.txt'
+      prompt: Backup filename template
+  settings-files:
+    - source: defaults/settings.yaml
+      destination: '${config-home}/example/settings.yaml'
+      format: yaml
+      if-exists: preserve
+      set:
+        /entries/0/destination: backup-folder
+        /entries/0/filename: backup-name
+```
+
+`source` is a regular file relative to the payload. `destination` expands
+installer inputs and must be an absolute file path outside application, command,
+payload, shortcut, explicitly declared settings, and lifecycle-managed locations.
+Duplicate/overlapping destinations, links, junctions, and directory destinations
+are rejected. `format` is `yaml` or `json`; `if-exists: preserve` is required and
+is the only supported policy.
+
+Each `set` key is an existing RFC 6901 JSON pointer identifying a scalar in the
+defaults document, including array indices. Its value is an input name. Resolved
+input values are copied with their types preserved; scalar-type changes, missing
+inputs, and missing/malformed pointers are errors. Values are serialized safely,
+without interpreting application-owned `${...}` tokens. With an empty/omitted
+`set`, the validated defaults are copied byte-for-byte, preserving comments,
+UTF-8 BOM, and line endings. With overrides, a new document is serialized; existing
+user files are never parsed or reformatted.
+
+All sources and requested changes are validated before installation writes.
+`--validate` checks them without creating settings or parent directories. Actual
+initialization uses an exclusive atomic publication, so an existing or concurrently
+created regular file is preserved byte-for-byte. Changes to inputs or bundled
+defaults on upgrade do not overwrite an existing settings file.
+
+Only files actually created by this installation are added to its settings
+inventory. Existing unowned files are preserved without adoption and remain
+untouched even by `--remove-settings`. Newly created settings are preserved by
+default on uninstall and may be removed by that explicit option. Other application
+documents/backups must not be declared as settings. Destination locks coordinate
+different application installations, and recorded ownership survives pending
+activation retries. If a process terminates between creation and recording
+ownership, the file is conservatively preserved as unowned on retry.
+
 ## Unattended and interactive execution
 
 The installer is console-only. Install and uninstall default to prompting;

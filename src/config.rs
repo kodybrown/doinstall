@@ -160,6 +160,14 @@ pub fn expand(value: &str, values: &BTreeMap<String, Value>) -> Result<String> {
   ensure!(!output.contains("${"), "Unresolved value: {output}");
   Ok(output)
 }
+
+pub fn expand_input(input: &Input, value: &str, values: &BTreeMap<String, Value>) -> Result<String> {
+  if input.expand {
+    expand(value, values)
+  } else {
+    Ok(value.to_owned())
+  }
+}
 pub fn validate(package: &Package) -> Result<()> {
   ensure!(package.schema == 1, "Unsupported schema: {}", package.schema);
   files::name(&package.application.id)?;
@@ -217,6 +225,13 @@ pub fn validate(package: &Package) -> Result<()> {
     }
   }
   crate::workflow::validate(package)?;
+  crate::settings_files::validate(package)?;
+  for (name, input) in &package.runtime.inputs {
+    ensure!(
+      input.expand || (input.kind == "string" && !standard_inputs().contains_key(name)),
+      "expand: false is only supported for custom string inputs: {name}"
+    );
+  }
   Ok(())
 }
 pub fn standard_inputs() -> BTreeMap<String, Input> {
@@ -235,6 +250,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
       name.into(),
       Input {
         group_index: None,
+        expand: true,
         kind: "boolean".into(),
         required: true,
         prompt: Some(name.replace('-', " ")),
@@ -247,6 +263,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
     "shortcut-name".into(),
     Input {
       group_index: None,
+      expand: true,
       kind: "string".into(),
       required: true,
       prompt: Some("Shortcut name (without extension)".into()),
@@ -259,6 +276,7 @@ pub fn standard_inputs() -> BTreeMap<String, Input> {
       name.into(),
       Input {
         group_index: None,
+        expand: true,
         kind: "path".into(),
         required: name == "install-dir",
         prompt: Some(name.replace('-', " ")),
@@ -456,7 +474,7 @@ fn resolve_with_io(
         .get(key)
         .map(text)
         .transpose()?
-        .map(|v| expand(&v, &values))
+        .map(|v| expand_input(input, &v, &values))
         .transpose()?
         .unwrap_or_default();
       let answer = loop {
@@ -472,7 +490,7 @@ fn resolve_with_io(
       values.insert(key.into(), answer.into());
     }
     if let Some(value) = values.get(key) {
-      let raw = expand(&text(value)?, &values)?;
+      let raw = expand_input(input, &text(value)?, &values)?;
       if key == "shortcut-name" && allowed {
         files::shortcut_name(&raw)?;
       }
@@ -557,6 +575,41 @@ mod tests {
     }
     .prompts(&package)
     .unwrap());
+  }
+
+  #[test]
+  fn literal_string_inputs_survive_plain_prompt_defaults_and_answers() {
+    let mut package = package();
+    package.runtime.inputs.insert(
+      "filename".into(),
+      serde_json::from_value(json!({
+        "type":"string", "expand":false,"required":true,"prompt":"Filename", "default":"${HOST}-${date:yyyyMMdd}.txt"
+      }))
+      .unwrap(),
+    );
+    let options = Options {
+      values: [
+        ("install-dir".into(), json!(std::env::temp_dir().join("literal-input-test"))),
+        ("add-to-path".into(), json!(false)),
+        ("additional-command".into(), json!(false)),
+      ]
+      .into(),
+      ..Options::default()
+    };
+    let mut prompts = Vec::new();
+    let values = resolve_with_io(&package, &options, true, &mut &b"\n"[..], &mut prompts, |_| Ok(false)).unwrap();
+    assert_eq!(values["filename"], "${HOST}-${date:yyyyMMdd}.txt");
+    assert!(String::from_utf8(prompts).unwrap().contains("${HOST}-${date:yyyyMMdd}.txt"));
+    let values = resolve_with_io(
+      &package,
+      &options,
+      true,
+      &mut &b"${OTHER}-${date:yyyy}.txt\n"[..],
+      &mut Vec::new(),
+      |_| Ok(false),
+    )
+    .unwrap();
+    assert_eq!(values["filename"], "${OTHER}-${date:yyyy}.txt");
   }
   #[test]
   fn optional_command_defaults_to_no_and_parent_follows_install_answer() {

@@ -13,6 +13,7 @@ mod model;
 mod package;
 mod packaging;
 mod self_extract;
+mod settings_files;
 mod user_path;
 mod workflow;
 use anyhow::{bail, ensure, Context, Result};

@@ -41,6 +41,10 @@ pub struct Runtime {
   pub shortcuts: Vec<Shortcut>,
   #[serde(default)]
   pub settings: Vec<String>,
+  /// Initialize mutable application settings outside immutable builds. Existing
+  /// files remain user-owned unless an earlier installation recorded them.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub settings_files: Vec<SettingsFile>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub host: Option<HostRequirements>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -102,6 +106,9 @@ pub struct Build {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
+  /// Literal application templates must survive installer input resolution.
+  #[serde(default = "interactive_default", skip_serializing_if = "cancel_confirmation_default")]
+  pub expand: bool,
   /// Equal indices share a visual group; this does not affect value resolution.
   #[serde(default, rename = "group-index", skip_serializing_if = "Option::is_none")]
   pub group_index: Option<u32>,
@@ -115,6 +122,31 @@ pub struct Input {
   pub default: Option<serde_json::Value>,
   #[serde(default)]
   pub choices: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct SettingsFile {
+  pub source: String,
+  pub destination: String,
+  pub format: SettingsFormat,
+  pub if_exists: ExistingSettings,
+  /// Existing JSON pointers in the defaults document mapped to input names.
+  #[serde(default)]
+  pub set: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SettingsFormat {
+  Yaml,
+  Json,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExistingSettings {
+  Preserve,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

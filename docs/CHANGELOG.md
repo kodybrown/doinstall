@@ -450,3 +450,28 @@
   output remains C:/tmp/_rust/doinstall/target. Native Linux execution of this
   workflow and remote CI remain unverified; macOS/ARM64 acceptance is deferred.
   No active installation, publication, or push was performed.
+
+### 2026-10-19 Initialize editable application settings from bundled defaults
+
+- Add installer-native runtime.settings-files for YAML/JSON defaults and typed
+  input-to-scalar JSON-pointer mappings. Require if-exists: preserve, validate
+  sources/paths/inputs before writes, and publish new settings exclusively and
+  atomically outside immutable application builds. Plain seeds preserve source
+  comments, UTF-8 BOM, and line endings; generated overrides safely retain literal
+  application tokens without interpolating serialized document text.
+- Add expand: false for custom string inputs in CLI, plain prompts, and Cursive
+  forms. Keep existing input expansion/default serialization unchanged when the
+  feature is unused. No application-specific logic, dotask dependency, hooks,
+  compatibility loader, or migration is added to doinstall.
+- Preserve existing settings byte-for-byte on install/update without adopting
+  unowned files. Record only newly created files for explicit settings removal,
+  preserve them by default on uninstall, coordinate shared destinations, and
+  recover recorded settings ownership during pending activation retries.
+- Verification: build.cmd verify passed 133 Rust tests, formatting, strict Clippy,
+  shim source/asset/PE integrity, and Git whitespace checks on Windows x64. Eight
+  new settings-file integration tests cover safe initialization, literal/custom
+  values, upgrade preservation, seed fidelity, validation refusal, JSON output,
+  uninstall ownership, and retry recovery; plain/dialog literal input tests pass.
+  Filekeep's self-extracting consumer passed temporary-root install, custom
+  configuration, backup, reinstall/upgrade, and retained uninstall acceptance with
+  persistent user/machine PATH unchanged. Native Unix/ARM64 acceptance is unverified.

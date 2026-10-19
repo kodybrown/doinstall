@@ -307,6 +307,7 @@ mod tests {
   fn yes_no_defaults_retry_and_eof() {
     let input = Input {
       group_index: None,
+      expand: true,
       kind: "boolean".into(),
       required: true,
       prompt: Some("Additional command?".into()),

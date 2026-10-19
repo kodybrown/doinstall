@@ -7,6 +7,7 @@ mod host;
 mod included_process;
 mod launchers;
 mod model;
+mod settings_files;
 mod tui;
 mod user_path;
 mod workflow;
