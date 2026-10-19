@@ -9,6 +9,14 @@ pinned included tools through [runtime lifecycle actions](INCLUDED-TOOLS.md).
 
 ## Install doinstall tools
 
+For prebuilt tools, use a pinned [GitHub release](RELEASES.md). People can run
+the platform's `doinstall-v<version>-<platform>-x64-setup[.exe]`; CI can verify and
+extract `doinstall-v<version>-<platform>-x64-tools.zip` (Windows) or `-tools.tar.gz`
+(Linux). The release contract documents checksums, metadata, licenses, exact
+archive layout and the Ubuntu 22.04 / glibc 2.35 Linux baseline. Keep all four
+native tools adjacent after extraction; the builder's query below then works
+without installation or persistent PATH changes. First publication is pending.
+
 From the source checkout, doinstall packages itself using its own builder,
 runtime, and ZIP launcher:
 
@@ -22,6 +30,9 @@ actual runnable file path. The default application version comes from the root
 Cargo package; `package --version VERSION` sets an explicit application version,
 and `--output-parent DIRECTORY` changes the output parent. Existing differing
 builds are refused, not overwritten. Packaging never launches installation.
+`--result-file FILE` writes JSON `FilePath` outside installer output for automation.
+Release assembly additionally uses `--distribution-dir DIR` for notices/metadata
+and checks that its tool snapshot matches the current build.
 The source recipe is [packaging/doinstall.yaml](../packaging/doinstall.yaml).
 End users running the resulting file need no Rust SDK or archiver.
 
@@ -61,9 +72,10 @@ adopt or migrate them. To uninstall on Windows:
 ```
 
 Use the chosen root if customized; Unix uses `<root>/installer/installer`.
-Extraction sources remain intentionally retained. Native Windows x64 acceptance
-is recorded with the change; Linux execution of this self-hosted workflow is
-unverified, and macOS/ARM64 testing is deferred.
+Extraction sources remain intentionally retained. Local release acceptance
+covered Windows x64 and Ubuntu 22.04.5 x64 in Docker, including self-hosted
+install/discovery/repackage/uninstall. Hosted Actions execution remains pending;
+macOS/ARM64 release testing is deferred. See [release acceptance](RELEASES.md#local-verification-and-acceptance).
 
 ## Assemble an application installer
 

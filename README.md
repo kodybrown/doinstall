@@ -10,6 +10,13 @@ their own runtime requirements.
 
 ## Install doinstall
 
+Versioned GitHub releases provide a self-extracting installer for people and a
+portable tools archive for CI on Windows x64 and Ubuntu 22.04 x64 / glibc 2.35.
+See [releases and pinned downloads](docs/RELEASES.md) for exact names, checksums,
+tool layout, compatibility limits, and the pending first-release procedure.
+Keep the matching builder, runtime, and launcher template together; consumers
+need no Rust SDK or doinstall source checkout.
+
 Build doinstall's own self-extracting installer from this source checkout:
 
 ```powershell
@@ -25,7 +32,8 @@ uninstall, and tool discovery from dotask or another build system.
 
 ## Build from source
 
-Rust 1.95+, Cargo, rustfmt, clippy, and a host linker are required.
+The pinned Rust 1.95.0 toolchain, Cargo, rustfmt, clippy, and a host linker are
+required. Rustup reads `rust-toolchain.toml`; release scripting also uses Python 3.10+.
 
 ```powershell
 .\build.cmd build
@@ -108,6 +116,12 @@ display, cancellation, terminal restoration, and retained-source checks on both
 systems. A Linux launcher assembled by the Windows builder also passed Linux
 install/validate/launch/uninstall acceptance. Native macOS and ARM64 execution,
 distribution signing/notarization, and remote CI remain unverified.
+
+Release automation additionally passed local portable-bundle and self-hosted
+installer acceptance on Windows x64 and native Ubuntu 22.04.5 x64 in Docker,
+including downstream package creation, launch and uninstall under temporary roots.
+Hosted Actions execution and release publication are pending. See the
+[release contract](docs/RELEASES.md) for the tested baseline and verification commands.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
 [src/shim](src/shim/README.md). Rebuilding those assets requires LLVM.

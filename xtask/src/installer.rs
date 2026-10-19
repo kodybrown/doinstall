@@ -18,7 +18,7 @@ pub fn architecture() -> Result<&'static str> {
   }
 }
 
-pub fn assemble(tools: &Path, output_parent: &Path, version: &str) -> Result<PathBuf> {
+pub fn assemble(tools: &Path, output_parent: &Path, version: &str, distribution: Option<&Path>) -> Result<PathBuf> {
   let temporary = tempfile::Builder::new().prefix("doinstall-package-").tempdir()?;
   let stage = fs::canonicalize(temporary.path())?;
   let payload = stage.join("payload");
@@ -36,6 +36,26 @@ pub fn assemble(tools: &Path, output_parent: &Path, version: &str) -> Result<Pat
       .with_context(|| format!("Missing release tool: {}", tools.join(name).display()))?;
   }
   fs::write(payload.join("LICENSE.md"), include_bytes!("../../LICENSE.md"))?;
+  if let Some(distribution) = distribution {
+    // The release driver supplies notices and metadata, never a directory of
+    // arbitrary build output. Require its tool snapshot to match this build.
+    for name in [
+      "doinstall",
+      "doinstall-builder",
+      "doinstall-launcher",
+      "doinstall-server",
+    ] {
+      let name = executable(name);
+      ensure!(
+        fs::read(distribution.join(&name))? == fs::read(payload.join(&name))?,
+        "Distribution tool mismatch"
+      );
+    }
+    for name in ["README.md", "THIRD-PARTY.json", "RELEASE.json"] {
+      fs::copy(distribution.join(name), payload.join(name))?;
+    }
+    copy_notices(&distribution.join("LICENSES"), &payload.join("LICENSES"))?;
+  }
   let mut config: Value = serde_saphyr::from_str(include_str!("../../packaging/doinstall.yaml"))?;
   config["application"]["version"] = version.into();
   config["platform"] = std::env::consts::OS.into();
@@ -70,4 +90,24 @@ pub fn assemble(tools: &Path, output_parent: &Path, version: &str) -> Result<Pat
     "Builder returned an invalid artifact path"
   );
   Ok(artifact)
+}
+
+fn copy_notices(source: &Path, destination: &Path) -> Result<()> {
+  ensure!(
+    !fs::symlink_metadata(source)?.file_type().is_symlink(),
+    "Notice links are not allowed"
+  );
+  fs::create_dir(destination)?;
+  for entry in fs::read_dir(source)? {
+    let entry = entry?;
+    let kind = entry.file_type()?;
+    ensure!(!kind.is_symlink(), "Notice links are not allowed");
+    if kind.is_dir() {
+      copy_notices(&entry.path(), &destination.join(entry.file_name()))?;
+    } else {
+      ensure!(kind.is_file(), "Not a regular notice file");
+      fs::copy(entry.path(), destination.join(entry.file_name()))?;
+    }
+  }
+  Ok(())
 }

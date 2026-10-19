@@ -27,7 +27,9 @@ fn execute(command: &mut Command) -> Result<()> {
 fn cargo(arguments: &[&str]) -> Result<()> {
   let mut command = Command::new("cargo");
   command.current_dir(root()).args(arguments);
-  if cfg!(windows) {
+  // Encoded flags are authoritative when the release driver supplies path
+  // remapping. Do not silently replace that policy with the Windows CRT flag.
+  if cfg!(windows) && std::env::var_os("CARGO_ENCODED_RUSTFLAGS").is_none() {
     command.env("RUSTFLAGS", "-C target-feature=+crt-static");
   }
   execute(&mut command)
@@ -57,7 +59,7 @@ fn run() -> Result<()> {
   let args: Vec<_> = std::env::args().skip(1).collect();
   let Some(action) = args.first() else {
     println!(
-      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION], verify, shim [--verify]"
+      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR], verify, shim [--verify]"
     );
     return Ok(());
   };
@@ -88,6 +90,8 @@ fn run() -> Result<()> {
     "package" => {
       let mut output = None;
       let mut version = None;
+      let mut report = None;
+      let mut distribution = None;
       let mut options = args[1..].iter();
       while let Some(option) = options.next() {
         match option.as_str() {
@@ -97,7 +101,15 @@ fn run() -> Result<()> {
           "--version" if version.is_none() => {
             version = Some(options.next().context("--version requires a value")?.to_owned())
           }
-          _ => bail!("Use package [--output-parent DIR] [--version VERSION]"),
+          "--result-file" if report.is_none() => {
+            report = Some(PathBuf::from(options.next().context("--result-file requires a path")?))
+          }
+          "--distribution-dir" if distribution.is_none() => {
+            distribution = Some(PathBuf::from(options.next().context("--distribution-dir requires a path")?))
+          }
+          _ => {
+            bail!("Use package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR]")
+          }
         }
       }
       cargo(&["build", "--package", "doinstall", "--locked", "--release"])?;
@@ -119,7 +131,14 @@ fn run() -> Result<()> {
             .map(str::to_owned)
         })
         .context("Missing doinstall package version")?;
-      let artifact = installer::assemble(&target()?.join("release"), &output, &version)?;
+      let artifact = installer::assemble(&target()?.join("release"), &output, &version, distribution.as_deref())?;
+      if let Some(report) = report {
+        ensure!(
+          !std::path::absolute(&report)?.starts_with(std::path::absolute(&output)?),
+          "Result file must remain outside the installer output"
+        );
+        fs::write(report, serde_json::to_vec_pretty(&serde_json::json!({"FilePath": artifact}))?)?;
+      }
       println!("Installer: {}", artifact.display());
       Ok(())
     }

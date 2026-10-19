@@ -489,3 +489,37 @@
   app-data roots, encoding/BOM/EOL preservation, and read-only validation. Evaluated
   Cargo target/build directories remain `C:/tmp/_rust/doinstall/target`. No active
   tool installation or persistent PATH changed; Unix native acceptance not run.
+
+### 2026-10-19 Prepare versioned GitHub release automation
+
+- Add Windows x64 and Ubuntu 22.04 x64 verification, native delivery acceptance,
+  portable ZIP/tar.gz bundles and self-extracting installers using the existing
+  Cargo build helper and public packaging recipe. Preserve macOS source checks
+  and the separate shim compilation gate. Manual/push/PR builds upload artifacts;
+  only exact Cargo-version tag pushes can publish after all gates pass.
+- Pin Rust 1.95.0 and Actions commits. Keep build/collection jobs read-only and
+  grant contents write only to draft-upload/publication. Refuse replacement of
+  existing releases, inconsistent platform metadata, dirty release inputs and
+  checksum/inventory mismatches. Keep all build and release outputs external.
+- Bundle matching runtime, builder, launcher template and server with project and
+  dependency license texts, source commit/toolchain metadata, stable versioned
+  asset names and combined SHA256SUMS. Add build-helper result FilePath reporting
+  and checked distribution metadata staging; preserve ordinary source packaging.
+- Remap private compile paths, neutralize Windows PDB paths, strip symbols and
+  inspect decompressed archives, installer contents and all delivered binaries
+  for private paths and credential patterns. Preserve Linux executable modes and
+  require the Ubuntu 22.04 / glibc 2.35 build baseline and symbol ceiling.
+- Document exact assets, pinned download/hash verification, adjacent-tool
+  discovery, the release/rehearsal procedure, default-branch dispatch prerequisite,
+  compatibility limits and separate local versus hosted acceptance evidence.
+- Verification: build.cmd verify passed 137 Rust tests on Windows x64;
+  build.sh verify passed 119 on native Ubuntu 22.04.5 x64 in Docker, including
+  formatting, strict clippy, shim integrity and whitespace. Five release boundary
+  tests passed on both platforms; actionlint 1.7.11 and two-platform checksum
+  collection passed. Finished portable bundles and self-installers passed native
+  temporary-root discovery/install/payload-hash checks, downstream self-extracting
+  assembly/launch and uninstall on both platforms. Active installations and
+  persistent PATH were not changed. Cargo target/build directories remain
+  C:/tmp/_rust/doinstall/target and /tmp/_rust/doinstall/target respectively.
+  Hosted Actions/macOS execution, signing and publication remain unverified;
+  no remote push or release tag was created.

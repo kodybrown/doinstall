@@ -37,7 +37,7 @@ fn self_installer_installs_tools_repackages_upgrades_and_uninstalls() {
   let tools = temp.path().join("build tools");
   snapshot(&tools);
   let delivery = temp.path().join("delivery");
-  let launcher = installer::assemble(&tools, &delivery, "1.0.0").unwrap();
+  let launcher = installer::assemble(&tools, &delivery, "1.0.0", None).unwrap();
   let root = temp.path().join("installed 日本語");
   let bin = temp.path().join("commands");
   let source = temp.path().join("retained source");
@@ -81,7 +81,7 @@ fn self_installer_installs_tools_repackages_upgrades_and_uninstalls() {
   );
   // Package another self-installer using only installed real tools. No Cargo,
   // source checkout, globally installed tools, or project task settings are read.
-  let second = installer::assemble(actual.parent().unwrap(), &delivery, "2.0.0").unwrap();
+  let second = installer::assemble(actual.parent().unwrap(), &delivery, "2.0.0", None).unwrap();
   let next_source = temp.path().join("next source");
   let mut upgrade = command(&second, &["--non-interactive", "--set", "add-to-path=false"]);
   upgrade
