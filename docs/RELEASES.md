@@ -3,8 +3,9 @@
 The release workflow builds standalone native doinstall tools with Cargo. It does
 not need an installed doinstall, dotask, .NET SDK, or consumer project checkout.
 Once the first release has been published, consumers can pin a GitHub release
-instead of building this repository. This automation has been tested locally;
-its first hosted Actions run and release publication are still pending.
+instead of building this repository. Local acceptance passed on both release
+platforms. The first hosted run passed Linux delivery acceptance and shim builds;
+Windows/macOS UI fixture fixes await a hosted rerun. Release publication is pending.
 
 ## Release identity and compatibility
 
@@ -144,8 +145,12 @@ execution; exercise the resulting application installer on its target platform.
 
 ## Workflow and maintainer procedure
 
-[release.yml](../.github/workflows/release.yml) runs on pushes, pull requests and
-`workflow_dispatch`. Native Windows and Linux jobs run the repository's full
+[release.yml](../.github/workflows/release.yml) automatically runs on commits pushed
+to `main` and on `v*` release-tag pushes. Pushes to `develop` or other branches and
+pull requests do not trigger it. Manual `workflow_dispatch` builds are accepted
+only for `main`; other refs skip the build jobs. Before any build starts, version
+tags must exactly match Cargo and point to a commit already reachable from remote
+`main`. Native Windows and Linux jobs run the repository's full
 `verify` command and release-script boundary tests, then create both deliveries.
 The existing macOS source verification and LLVM shim rebuild check remain gates;
 macOS does not publish assets. The Rust shim hashes verify the checked-in source
@@ -168,8 +173,8 @@ commit and uploads `release-ready`. Workflow artifacts expire after 14 days.
 The archive inside the artifact preserves Linux modes, even though Actions'
 outer artifact transport does not preserve executable modes.
 
-Only a **push of a valid version tag** can enter the publishing job. Manual runs,
-including manual runs selecting a tag, only upload artifacts. All build/collection
+Only a **push of a valid version tag on main's history** can enter the publishing
+job. Manual runs on `main` only upload artifacts. All build/collection
 jobs have `contents: read`, with checkout credentials disabled. Only publication
 gets `contents: write`. It downloads the already-verified set, rechecks checksums,
 uploads every asset into a new draft with `gh release create --verify-tag`, then
@@ -178,14 +183,16 @@ token. It refuses dirty-source artifacts. A rerun fails if that release already
 exists; it never silently replaces assets. If upload/publication fails, inspect
 the retained draft and workflow artifacts before deciding how to retry.
 
-Before the first release, push the reviewed commit to `develop` for an
+Before the first release, integrate the reviewed change from `develop` into
+`main` through the repository's normal process, then push `main` for an
 artifact-only rehearsal. The following are **commands for the maintainer after
-authorization**; implementing this workflow does not execute them:
+authorization**, after local integration; implementing the workflow does not
+execute them or switch the user's checkout:
 
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
 git status --short
-git push origin develop
+git push origin main
 gh run list --workflow release.yml --repo kodybrown/doinstall
 # Copy the rehearsal run ID, then inspect its status and download its assets:
 gh run watch RUN_ID --exit-status --repo kodybrown/doinstall
@@ -195,10 +202,10 @@ gh run download RUN_ID --name release-ready --dir C:/tmp/doinstall-first-release
 The repository's current default branch is `main`. GitHub requires a dispatchable
 workflow to be present on the default branch before it can be manually dispatched.
 Once this workflow reaches `main` through the normal authorized integration
-process, manual artifact-only builds of `develop` are also available:
+process, manual artifact-only builds of `main` are also available:
 
 ```powershell
-gh workflow run release.yml --ref develop --repo kodybrown/doinstall
+gh workflow run release.yml --ref main --repo kodybrown/doinstall
 ```
 
 The normal push rehearsal above works without that prerequisite, runs the same
@@ -212,12 +219,12 @@ After reviewing the successful rehearsal and obtaining release authorization:
 cd C:\Users\kodyb\Projects\doinstall
 git status --short
 python -B scripts/release.py version --tag v0.1.0
-git tag -a v0.1.0 -m 'doinstall v0.1.0'
+git tag -a v0.1.0 main -m 'doinstall v0.1.0'
 git push origin refs/tags/v0.1.0
 gh run list --workflow release.yml --repo kodybrown/doinstall
 ```
 
-Tag the reviewed, clean commit that was rehearsed, with no intervening changes.
+Tag the reviewed, clean commit on `main` that was rehearsed, with no intervening changes.
 The tag push reruns every gate and publishes only if they all pass. GitHub Actions
 and repository policy must permit the publishing job's contents write permission.
 Do not create a separate release manually before the job, because existing
@@ -262,8 +269,13 @@ discovery are checked independently. Extracted sources are normally retained by
 the launcher; the test owns and removes its entire temporary tree afterward.
 Persistent user/machine PATH and active installations are never test targets.
 
-Local acceptance for this change: Windows x64 and Ubuntu 22.04.5 x64 in Docker
+Local release acceptance: Windows x64 and Ubuntu 22.04.5 x64 in Docker
 (glibc 2.35, native Linux binaries). Docker shares its host kernel, so this does
-not prove every Ubuntu kernel or bare-metal environment. Hosted Windows/Linux
-Actions, hosted macOS verification, signing, and publication remain pending until
-the workflow is pushed and run.
+not prove every Ubuntu kernel or bare-metal environment. The first hosted run
+passed Linux packaging/acceptance and both shim builds. Its Windows/macOS failures
+came from UI fixtures using unresolved temporary-path aliases; the fix resolves
+fixture parents before creating temporary roots, including file-backed
+integration and self-extracting unit fixtures. All 137 Windows tests also passed
+with TEMP/TMP deliberately set through a directory junction. The revised workflow
+still needs a hosted run, including native macOS verification. Signing and
+publication remain pending.

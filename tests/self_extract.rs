@@ -1,4 +1,5 @@
 //! Native acceptance stays inside disposable directories; PATH is never changed.
+mod support;
 use serde_json::{json, Value};
 use std::{
   fs,
@@ -16,7 +17,7 @@ fn executable(stem: &str) -> String {
 }
 impl Fixture {
   fn new() -> Self {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = support::temporary();
     let payload = temp.path().join("payload");
     fs::create_dir(&payload).unwrap();
     fs::copy(env!("CARGO_BIN_EXE_doinstall"), payload.join(executable("app"))).unwrap();

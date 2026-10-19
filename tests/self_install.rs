@@ -1,6 +1,7 @@
 //! Self-hosted delivery must work through installed shims, without user PATH edits.
 #[path = "../xtask/src/installer.rs"]
 mod installer;
+mod support;
 use installer::executable;
 use serde_json::Value;
 use std::{
@@ -33,7 +34,7 @@ fn snapshot(directory: &Path) {
 
 #[test]
 fn self_installer_installs_tools_repackages_upgrades_and_uninstalls() {
-  let temp = tempfile::tempdir().unwrap();
+  let temp = support::temporary();
   let tools = temp.path().join("build tools");
   snapshot(&tools);
   let delivery = temp.path().join("delivery");
@@ -109,7 +110,7 @@ fn self_installer_installs_tools_repackages_upgrades_and_uninstalls() {
 
 #[test]
 fn tool_path_query_requires_real_adjacent_tools_and_accepts_no_packaging_flags() {
-  let temp = tempfile::tempdir().unwrap();
+  let temp = support::temporary();
   let builder = temp.path().join(executable("doinstall-builder"));
   fs::copy(env!("CARGO_BIN_EXE_doinstall-builder"), &builder).unwrap();
   assert!(!command(&builder, &["--print-tool-paths"]).output().unwrap().status.success());

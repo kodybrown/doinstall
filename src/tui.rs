@@ -778,7 +778,12 @@ mod tests {
     })
   }
   fn fixture() -> (tempfile::TempDir, Cursive, PathBuf) {
-    let temp = tempfile::tempdir().unwrap();
+    // Hosted Windows can use an 8.3 TEMP path and macOS uses /var -> /private/var.
+    // Create the fixture under the same resolved, native spelling the runtime
+    // uses, so UI expectations and direct engine calls share one owned root.
+    let temporary = std::env::temp_dir();
+    let parent = crate::files::absolute(&temporary, &temporary).unwrap();
+    let temp = tempfile::tempdir_in(parent).unwrap();
     let root = temp.path().join("application");
     let payload = temp.path().join("payload");
     std::fs::create_dir(&payload).unwrap();

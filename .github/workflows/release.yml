@@ -2,7 +2,8 @@ name: Verify and release
 
 on:
   push:
-  pull_request:
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -16,7 +17,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-ref:
+    # Manual runs on other branches are skipped. Version tags remain the
+    # explicit publication trigger, but must select a commit already on main.
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate release identity and main ancestry
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_TYPE" == tag ]]; then
+            python scripts/release.py version --tag "$REF_NAME"
+            git merge-base --is-ancestor HEAD refs/remotes/origin/main
+          else
+            python scripts/release.py version
+          fi
+
   native:
+    needs: validate-ref
     name: Verify and package ${{ matrix.platform }} x64
     strategy:
       fail-fast: false
@@ -35,16 +60,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Validate version tag before compiling
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [[ "$REF_TYPE" == tag ]]; then
-            python scripts/release.py version --tag "$REF_NAME"
-          else
-            python scripts/release.py version
-          fi
       - name: Load pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Verify standalone project
@@ -68,6 +83,7 @@ jobs:
           retention-days: 14
 
   macos-verify:
+    needs: validate-ref
     # Retain the existing source verification; macOS is not a release target.
     runs-on: macos-14
     timeout-minutes: 45
@@ -79,6 +95,7 @@ jobs:
       - run: ./build.sh verify
 
   shim-source:
+    needs: validate-ref
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:

@@ -1,4 +1,5 @@
 //! Included-tool acceptance uses a native test probe and disposable paths only.
+mod support;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -17,7 +18,7 @@ struct Fixture {
 }
 impl Fixture {
   fn new(phase: &str) -> Self {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = support::temporary();
     let root = temp.path().join("installed");
     let managed = temp.path().join("service.conf");
     let sentinel = temp.path().join("fail");

@@ -381,7 +381,11 @@ impl Bundle {
 mod tests {
   use super::*;
   fn fixture(platform: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-    let temporary = tempfile::tempdir().unwrap();
+    // Use physical temporary paths for the same no-links contract exercised by
+    // production assembly, including macOS's /var alias and Windows TEMP aliases.
+    let system_temporary = std::env::temp_dir();
+    let parent = files::absolute(&system_temporary, &system_temporary).unwrap();
+    let temporary = tempfile::tempdir_in(parent).unwrap();
     let template = temporary.path().join("template");
     let mut bytes = vec![0; 512];
     match platform {

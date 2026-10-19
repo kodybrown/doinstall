@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{json, Value};
 use std::{
   fs,
@@ -14,7 +15,7 @@ struct Fixture {
 }
 impl Fixture {
   fn new() -> Self {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = support::temporary();
     let root = temp.path().join("installed app 日本語");
     let bin = temp.path().join("commands");
     let payload = temp.path().join("payload");

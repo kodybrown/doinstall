@@ -523,3 +523,25 @@
   C:/tmp/_rust/doinstall/target and /tmp/_rust/doinstall/target respectively.
   Hosted Actions/macOS execution, signing and publication remain unverified;
   no remote push or release tag was created.
+
+### 2026-10-19 Limit branch CI to main and resolve hosted fixture paths
+
+- Run automatic branch builds only for main; remove pull-request and other-branch
+  triggers. Preserve explicit version-tag releases, requiring exact Cargo-version
+  tags whose commits are already reachable from remote main. Allow manual builds
+  only on main, with reference validation before compilation or packaging.
+- Diagnose the first hosted failures: Windows UI fixtures compared runneradmin
+  paths against RUNNER~1 aliases and used mismatched receipt roots; macOS fixtures
+  traversed /var rather than /private/var. Resolve temporary fixture parents before
+  recording expected paths or invoking engine operations. Share physical-path
+  setup across integration fixtures and normalize synthetic self-extracting unit
+  fixtures. Preserve runtime refusal of links and junctions inside owned trees.
+- Update release procedures and acceptance evidence. The initial hosted main run
+  passed Linux delivery acceptance and both shim builds; revised Windows/macOS
+  hosted verification and release publication still require a new main push.
+- Verification: build.cmd verify passed all 137 Windows Rust tests, formatting,
+  strict clippy, shim integrity and whitespace with child-only TEMP/TMP redirected
+  through the C:/tmp junction. Five release boundary tests, actionlint 1.7.11 and
+  local documentation links passed. Cargo target/build directories remain
+  C:/tmp/_rust/doinstall/target. Persistent PATH and active installations were
+  unchanged. No push, tag, hosted rerun or publication was performed.

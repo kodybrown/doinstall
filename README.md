@@ -120,7 +120,9 @@ distribution signing/notarization, and remote CI remain unverified.
 Release automation additionally passed local portable-bundle and self-hosted
 installer acceptance on Windows x64 and native Ubuntu 22.04.5 x64 in Docker,
 including downstream package creation, launch and uninstall under temporary roots.
-Hosted Actions execution and release publication are pending. See the
+Hosted Linux packaging and shim builds passed; Windows/macOS fixture fixes await
+a hosted rerun, and release publication is pending. Automatic branch builds run
+only on `main`; release-tag pushes and manual builds follow the
 [release contract](docs/RELEASES.md) for the tested baseline and verification commands.
 
 The Windows shim source, bundled binaries, and rebuild instructions are under
