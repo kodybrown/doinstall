@@ -690,3 +690,20 @@
   consumer packaging and uninstall acceptance. No active installation or PATH
   changed. Cargo target/build directories remain C:/tmp/_rust/doinstall/target.
   No actual version increment, tag, push or release publication was performed.
+
+### 2026-10-20 Fix publisher shell acceptance under Windows CI
+
+- Give the publisher test's Bash process a fixture-owned native TMPDIR using
+  forward slashes, so Bash and Windows jq resolve the same metadata files even
+  when MSYS path conversion is disabled. Keep mktemp output within the fixture
+  for automatic cleanup. Leave the production Ubuntu publisher unchanged.
+- Explicitly disable MSYS conversion in Windows regression runs and use a
+  fixture path containing spaces. Cover the same existing-release metadata
+  lookup that failed in GitHub Actions, alongside all six other publisher cases.
+- Verification: reproduced the original missing-metadata failure with disabled
+  conversion and a POSIX-style TMPDIR; the corrected focused publisher tests pass
+  under that same inherited environment. build.cmd verify passed all 154 Windows
+  Rust tests, formatting, strict Clippy, shim integrity and Git whitespace checks
+  with that environment retained. Cargo target/build outputs remain external at
+  C:/tmp/_rust/doinstall/target. Preserve the prepared 0.1.1 version; no tags,
+  pushes, releases, active installations or persistent PATH were changed.

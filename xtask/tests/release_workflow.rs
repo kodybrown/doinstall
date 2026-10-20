@@ -54,7 +54,7 @@ fn publisher_creates_exact_tested_release_and_refuses_version_reuse_or_partial_d
   let script = data["jobs"]["publish"]["steps"].as_array().unwrap().last().unwrap()["run"]
     .as_str()
     .unwrap();
-  let work = tempfile::tempdir().unwrap();
+  let work = tempfile::Builder::new().prefix("doinstall publisher ").tempdir().unwrap();
   let script_path = work.path().join("publish.sh");
   // A shell function takes precedence over every executable on PATH, including
   // Windows/MSYS PATH conversion. Real gh can never be reached by this script.
@@ -111,6 +111,13 @@ esac
     fs::set_permissions(tools.join("gh"), fs::Permissions::from_mode(0o755)).unwrap();
   }
   let log = work.path().join("commands.log");
+  // Windows CI disables MSYS argument conversion for the outer cmd.exe call.
+  // Keep that condition in this regression. Give mktemp an owned, native path
+  // with forward slashes that both Bash and Windows jq understand without
+  // conversion; Bash's /tmp can refer to a different directory/drive entirely.
+  // On Unix this remains a normal absolute path. All shell temp files are now
+  // inside the fixture and removed by its TempDir, including on assertion failure.
+  let shell_temp = runner.to_string_lossy().replace('\\', "/");
   for case in [
     "new",
     "existing",
@@ -121,7 +128,11 @@ esac
     "upload-failure",
   ] {
     fs::write(&log, "").unwrap();
-    let output = Command::new(&bash)
+    let mut command = Command::new(&bash);
+    if cfg!(windows) {
+      command.env("MSYS_NO_PATHCONV", "1");
+    }
+    let output = command
       .arg(&script_path)
       .env("TEST_LOG", &log)
       .env("TEST_GH", tools.join("gh"))
@@ -130,6 +141,7 @@ esac
       .env("GH_REPO", "example/tool")
       .env("ASSETS", &assets)
       .env("RUNNER_TEMP", &runner)
+      .env("TMPDIR", &shell_temp)
       .output()
       .unwrap();
     assert_eq!(
