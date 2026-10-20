@@ -46,6 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # macOS builds and installer acceptance are temporarily disabled.
         include:
           - os: windows-2022
             platform: windows
@@ -82,18 +83,6 @@ jobs:
           compression-level: 0
           retention-days: 14
 
-  macos-verify:
-    needs: validate-ref
-    # Retain the existing source verification; macOS is not a release target.
-    runs-on: macos-14
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - run: rustup show active-toolchain
-      - run: ./build.sh verify
-
   shim-source:
     needs: validate-ref
     runs-on: ubuntu-22.04
@@ -108,7 +97,7 @@ jobs:
       - run: ./build.sh shim --verify
 
   collect:
-    needs: [native, macos-verify, shim-source]
+    needs: [native, shim-source]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

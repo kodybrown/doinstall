@@ -5,8 +5,8 @@ not need an installed doinstall, dotask, .NET SDK, or consumer project checkout.
 Once the first release has been published, consumers can pin a GitHub release
 instead of building this repository. Local acceptance passed on both release
 platforms. Hosted Windows/Linux delivery acceptance and shim builds passed.
-macOS passed the fixture-path corrections, then failed self-extracting signing;
-the Mach-O signing correction awaits a hosted rerun. Release publication is pending.
+macOS CI builds, installer acceptance and release gating are temporarily disabled;
+macOS packaging remains unverified. Release publication is pending.
 
 ## Release identity and compatibility
 
@@ -153,8 +153,11 @@ only for `main`; other refs skip the build jobs. Before any build starts, versio
 tags must exactly match Cargo and point to a commit already reachable from remote
 `main`. Native Windows and Linux jobs run the repository's full
 `verify` command and release-script boundary tests, then create both deliveries.
-The existing macOS source verification and LLVM shim rebuild check remain gates;
-macOS does not publish assets. The Rust shim hashes verify the checked-in source
+Only Windows x64 and Linux x64 are built and exercised. The macOS verification
+job is temporarily disabled, so it cannot generate test installers or block
+artifact collection and publication. The LLVM shim rebuild check remains a gate.
+macOS publishes no assets; re-enabling it requires native installer/signing
+acceptance. The Rust shim hashes verify the checked-in source
 and binaries; rebuilding with the runner's LLVM is a separate compilation check,
 not a claim of byte-identical shim reproduction.
 
@@ -281,5 +284,8 @@ with TEMP/TMP deliberately set through a directory junction. A subsequent hosted
 run passed Windows/Linux deliveries, the shim builds, and
 macOS's earlier path cases. macOS then reached self-extracting tests and failed
 because assembly left an empty signature command and an unaccounted link-edit
-tail. The corrected Mach-O preparation still requires native macOS verification;
-trusted distribution signing and publication remain pending.
+tail. Further macOS failures remain unresolved, and macOS CI builds and installer
+acceptance are now temporarily disabled. Those failures no longer gate the
+Windows/Linux releases. macOS source and signing code remain available for future
+work; successful native signing/execution is not claimed. Trusted distribution
+signing and publication remain pending.

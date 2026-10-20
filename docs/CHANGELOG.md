@@ -572,3 +572,16 @@
   remain C:/tmp/_rust/doinstall/target. Native macOS code signing/execution still
   needs a hosted rerun; Windows structural tests do not prove it. Persistent PATH
   and active installations were unchanged; no push, tag or publication occurred.
+
+### 2026-10-20 Temporarily disable macOS installer CI
+
+- Remove the macOS verification job, which builds tools and generates installers
+  during native acceptance tests. Remove its dependency from release collection;
+  Windows x64, Linux x64 and the shim-source check remain required gates.
+- Keep macOS source/signing code for future work, but document that macOS CI and
+  installer acceptance are disabled and its native packaging remains unverified.
+  Preserve main-only branch triggers, explicit release-tag validation, manual
+  main builds, permissions and the Windows/Linux asset contract.
+- Verification: actionlint 1.7.11, five release boundary tests, local documentation
+  links and git diff --check passed. No Rust source or build commands changed;
+  native test suites were not repeated. No push, tag or publication was performed.
