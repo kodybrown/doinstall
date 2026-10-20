@@ -585,3 +585,24 @@
 - Verification: actionlint 1.7.11, five release boundary tests, local documentation
   links and git diff --check passed. No Rust source or build commands changed;
   native test suites were not repeated. No push, tag or publication was performed.
+
+### 2026-10-20 Add optional YAML release-tag task
+
+- Add .tasks/tag-release.task using native dotask workflow steps. Derive the
+  version from the existing release validator, require clean tracked files and
+  identical HEAD/local main/fetched origin/main commits, and require the latest
+  main push workflow to have succeeded for that commit before tagging it.
+- Create an annotated local tag by default; --push sends only that new release
+  tag. --create=false checks and previews without tagging or pushing, including
+  when combined with --push. Never force, replace or delete tags. Keep failed
+  pushes recoverable by leaving the local tag available for inspection.
+- Add exact-token output to the existing Python version command for task process
+  capture. Document prerequisites, commands, guards and manual alternatives.
+  Keep build/runtime/release CI independent of dotask; preserve user configuration.
+- Verification: build.cmd verify passed all 140 Windows Rust tests, formatting,
+  strict clippy and shim integrity. All 13 Python tests passed, including optional
+  installed-dotask execution with simulated Git/GitHub tools for preview, tagging,
+  push and failure paths. Real GitHub query validation, task help, documentation
+  links and git diff --check passed. Cargo target/build directories remain
+  C:/tmp/_rust/doinstall/target. Linux task execution is not claimed. No actual
+  tags, pushes or releases were created; active installations and PATH were unchanged.

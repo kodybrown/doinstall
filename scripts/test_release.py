@@ -1,6 +1,8 @@
 """Release boundary tests: malformed inputs must fail before publication."""
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import warnings
@@ -11,6 +13,12 @@ import release
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_version_cli_supports_exact_task_capture(self):
+        command = [sys.executable, "-B", str(release.ROOT / "scripts/release.py"), "version"]
+        expected = release.version().encode()
+        self.assertEqual(subprocess.check_output(command).strip(), expected)
+        self.assertEqual(subprocess.check_output(command + ["--no-newline"]), expected)
+
     def test_tag_requires_exact_cargo_version(self):
         expected = release.version()
         self.assertEqual(release.version("v" + expected), expected)

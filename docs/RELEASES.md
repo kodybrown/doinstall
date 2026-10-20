@@ -217,7 +217,47 @@ verification, and uploads `release-ready` without publishing. A valid tag push
 also uses the workflow at the tagged commit. This implementation does not change
 the default branch or repository settings.
 
-After reviewing the successful rehearsal and obtaining release authorization:
+### Tagging with dotask
+
+After reviewing the successful rehearsal and obtaining release authorization,
+the optional [.tasks/tag-release.task](../.tasks/tag-release.task) handles the
+tag syntax, version and commit for you. It requires an installed dotask with YAML
+workflow support, Git, Python 3.10+, and authenticated GitHub CLI (`gh auth login`).
+It needs no task SDK, compilation or `.dotasks.yaml` configuration. Building,
+verification, packaging and release CI remain independent of dotask.
+
+```powershell
+cd C:\Users\kodyb\Projects\doinstall
+dotask tag-release --create=false
+# After reviewing the preview, create and push the tag (starts publication):
+dotask tag-release --push
+```
+
+The task reads and validates Cargo's version through the existing release driver;
+you supply neither a version nor a commit hash. It refuses tracked staged or
+unstaged changes, fetches `origin/main` without tags, and requires `HEAD`, local
+`main` and fetched `origin/main` to identify the same commit. You can run from
+`develop` when it matches `main`; integrate and push through the normal process
+first. Untracked files are not tagged and do not block the task. The latest
+`release.yml` push run on `main` must have completed successfully for that exact
+commit. Pending, failed, missing or mismatched CI stops before tagging.
+
+`--create=false` performs checks and prints the plan without creating or pushing
+a tag, even when combined with `--push`; it still fetches the remote-tracking
+branch. With no options, the task creates only an annotated local tag. `--push`
+creates the tag and pushes only its full `refs/tags/vVERSION` ref to `origin`.
+The tag targets the captured, verified commit explicitly. Git refuses an existing
+local tag; the task never forces, replaces, deletes, switches branches or bumps
+versions. If pushing fails, the local tag remains for inspection. After creating
+a local-only tag, push that reviewed tag with `git push origin refs/tags/v0.1.0`
+(substitute its version); rerunning the task refuses the existing tag.
+
+The helper's Windows execution and failure paths are tested with simulated Git
+and GitHub commands, without creating real tags or publishing. These optional
+tests run when dotask is installed; CI does not install or require it. Native
+Linux execution of this maintainer helper has not been tested.
+
+Without dotask, the equivalent manual commands remain available:
 
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
@@ -229,6 +269,8 @@ gh run list --workflow release.yml --repo kodybrown/doinstall
 ```
 
 Tag the reviewed, clean commit on `main` that was rehearsed, with no intervening changes.
+Git permits omitting the commit argument and then defaults to `HEAD`; explicitly
+selecting `main` (or using the task) avoids tagging a different checkout commit.
 The tag push reruns every gate and publishes only if they all pass. GitHub Actions
 and repository policy must permit the publishing job's contents write permission.
 Do not create a separate release manually before the job, because existing

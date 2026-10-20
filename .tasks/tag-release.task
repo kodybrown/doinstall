@@ -1,0 +1,121 @@
+description: Tag the verified main commit using Cargo's version; --push starts GitHub release publication.
+options:
+  - name: create
+    type: bool
+    default: true
+    description: Create the annotated local tag; false checks and previews without creating or pushing.
+  - name: push
+    type: bool
+    default: false
+    description: Push only the newly created release tag to origin, starting publication.
+requires:
+  - {kind: tool, value: git}
+  - {kind: tool, value: gh}
+  - {kind: tool, value: python}
+examples:
+  - dotask tag-release --create=false
+  - dotask tag-release
+  - dotask tag-release --push
+steps:
+  # Tags select committed data. Untracked files (including optional dotask
+  # configuration) are not release inputs; staged or unstaged changes are refused.
+  - exec: {executable: git, arguments: [diff, --quiet]}
+  - exec: {executable: git, arguments: [diff, --cached, --quiet]}
+  - id: commit
+    exec:
+      executable: git
+      # format: has no trailing newline, so the captured SHA is one exact token.
+      arguments: [log, '-1', '--format=format:%H', main, --]
+      capture-output: true
+  - exec:
+      executable: git
+      arguments: [fetch, --no-tags, origin, 'refs/heads/main:refs/remotes/origin/main']
+      timeout-seconds: 120
+  # Both ancestry directions require exact commit identity, not just equal trees.
+  # Running from develop is fine when it selects the same commit as main.
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, {result: commit.output}, HEAD]
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, HEAD, {result: commit.output}]
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, {result: commit.output}, main]
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, main, {result: commit.output}]
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, {result: commit.output}, origin/main]
+  - exec:
+      executable: git
+      arguments: [merge-base, --is-ancestor, origin/main, {result: commit.output}]
+  - id: version
+    exec:
+      # Reuse the release version validator; no task SDK or duplicate version is needed.
+      executable: python
+      arguments: [-B, scripts/release.py, version, --no-newline]
+      capture-output: true
+  - id: tag
+    text:
+      template: 'v{{version}}'
+      values: {version: {result: version.output}}
+  - id: message
+    text:
+      template: 'doinstall {{tag}}'
+      values: {tag: {result: tag.text}}
+  - id: tag-ref
+    text:
+      template: 'refs/tags/{{tag}}'
+      values: {tag: {result: tag.text}}
+  - id: ci-query
+    text:
+      template: >-
+        .[0] | if .headSha == "{{commit}}" and .status == "completed" and .conclusion == "success"
+        then "Main verification passed for {{commit}}"
+        else error("The latest main push must pass release.yml for this commit before tagging.") end
+      values: {commit: {result: commit.output}}
+  - exec:
+      executable: gh
+      arguments:
+        - run
+        - list
+        - --repo
+        - kodybrown/doinstall
+        - --workflow
+        - release.yml
+        - --branch
+        - main
+        - --event
+        - push
+        - --limit
+        - '1'
+        - --json
+        - headSha,status,conclusion
+        - --jq
+        - {result: ci-query.text}
+      timeout-seconds: 120
+  - id: plan
+    text:
+      template: '--format=Release {{tag}} from main at %H%nCreate tag: {{create}}; push tag: {{push}}'
+      values:
+        tag: {result: tag.text}
+        create: {parameter: create}
+        push: {parameter: push}
+  - exec:
+      executable: git
+      arguments: [log, '-1', {result: plan.text}, {result: commit.output}, --]
+  # This conditional block keeps BOTH mutations out of a check-only invocation,
+  # even if --push was also supplied. Its one item is the exact verified commit.
+  - foreach: {items: [{result: commit.output}], as: release-commit}
+    when: {parameter: create}
+    steps:
+      - exec:
+          executable: git
+          arguments: [tag, -a, {result: tag.text}, {item: release-commit}, -m, {result: message.text}]
+      - exec:
+          executable: git
+          arguments: [push, origin, {result: tag-ref.text}]
+          timeout-seconds: 120
+        when: {parameter: push}

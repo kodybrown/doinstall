@@ -17,6 +17,12 @@ tool layout, compatibility limits, and the pending first-release procedure.
 Keep the matching builder, runtime, and launcher template together; consumers
 need no Rust SDK or doinstall source checkout.
 
+Maintainers with dotask installed can preview a release with
+`dotask tag-release --create=false`, then create and push its version tag with
+`dotask tag-release --push`. The optional [.task](.tasks/tag-release.task) reads
+Cargo's version and requires matching local/remote `main` plus successful main CI;
+see the [release procedure](docs/RELEASES.md#tagging-with-dotask).
+
 Build doinstall's own self-extracting installer from this source checkout:
 
 ```powershell

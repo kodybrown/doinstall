@@ -353,12 +353,13 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("version")
     validate.add_argument("--tag")
+    validate.add_argument("--no-newline", action="store_true", help="Emit one exact token for task process capture")
     assemble = commands.add_parser("build")
     assemble.add_argument("--tag")
     assemble.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "version":
-        print(version(args.tag))
+        print(version(args.tag), end="" if args.no_newline else "\n")
     else:
         build(args.output, args.tag)
 
