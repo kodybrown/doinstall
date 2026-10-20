@@ -1,0 +1,10 @@
+description: Build and run the current doinstall runtime without installing it.
+options:
+  - {name: args, default: '[]', description: JSON array of literal application arguments.}
+requires: [{kind: task, value: _/rust/run}]
+steps:
+  - run: _/rust/run
+    with:
+      bin: doinstall
+      args: {parameter: args}
+      format-tasks: true

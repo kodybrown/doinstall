@@ -2,16 +2,17 @@
 
 The release workflow builds standalone native doinstall tools with Cargo. It does
 not need an installed doinstall, dotask, .NET SDK, or consumer project checkout.
-Once the first release has been published, consumers can pin a GitHub release
-instead of building this repository. Local acceptance passed on both release
-platforms. Hosted Windows/Linux delivery acceptance and shim builds passed.
+Consumers can pin a GitHub release instead of building this repository. Local
+acceptance passed on both release platforms. Hosted Windows/Linux delivery
+acceptance and shim builds passed.
 macOS CI builds, installer acceptance and release gating are temporarily disabled;
-macOS packaging remains unverified. Release publication is pending.
+macOS packaging remains unverified.
 
 ## Release identity and compatibility
 
-The root `Cargo.toml` package version is authoritative. Tags must be exactly
-`vMAJOR.MINOR.PATCH`, for example `v0.1.0`, matching that version byte for byte.
+The root `Cargo.toml` package version is authoritative. After main's verification
+passes, Actions derives GitHub's internal release tag as `vMAJOR.MINOR.PATCH`,
+for example `v0.1.0`, matching that version byte for byte. No manual tag is needed.
 Leading zeros, alternate prefixes, prerelease suffixes, four-component application
 versions, and UTC application build stamps are not release tags. Application
 packages can still use their own versions and build stamps as documented in
@@ -20,7 +21,7 @@ never move a published tag or replace existing release assets.
 
 - Windows x64: `x86_64-pc-windows-msvc`, static CRT, tested by the workflow on
   `windows-2022` (Windows Server 2022). Local acceptance on Windows x64 is separate
-  from the pending hosted runner run. No Windows ARM64 or older-Windows release
+  from hosted runner acceptance. No Windows ARM64 or older-Windows release
   compatibility is claimed.
 - Linux x64: `x86_64-unknown-linux-gnu`, built and exercised on `ubuntu-22.04`,
   Ubuntu 22.04 / glibc 2.35. Native code uses the generic Rust x86_64 CPU baseline.
@@ -144,181 +145,144 @@ names, compile doinstall per application, substitute command shims, or mix tools
 from different versions. Cross-platform package assembly does not prove target
 execution; exercise the resulting application installer on its target platform.
 
-## Workflow and maintainer procedure
+## Workflow and publication
 
-[release.yml](../.github/workflows/release.yml) automatically runs on commits pushed
-to `main` and on `v*` release-tag pushes. Pushes to `develop` or other branches and
-pull requests do not trigger it. Manual `workflow_dispatch` builds are accepted
-only for `main`; other refs skip the build jobs. Before any build starts, version
-tags must exactly match Cargo and point to a commit already reachable from remote
-`main`. Native Windows and Linux jobs run the repository's full
-`verify` command, including Rust release boundary tests, then create both deliveries.
-Only Windows x64 and Linux x64 are built and exercised. The macOS verification
-job is temporarily disabled, so it cannot generate test installers or block
-artifact collection and publication. The LLVM shim rebuild check remains a gate.
-macOS publishes no assets; re-enabling it requires native installer/signing
-acceptance. The Rust shim hashes verify the checked-in source
-and binaries; rebuilding with the runner's LLVM is a separate compilation check,
-not a claim of byte-identical shim reproduction.
+[release.yml](../.github/workflows/release.yml) automatically runs on pushes to
+`main`. Develop, other branch pushes, pull requests and tag pushes do not trigger
+it. A manual `workflow_dispatch` on main produces workflow artifacts without
+publishing; other refs skip the jobs.
 
-Each native job checks a closed file inventory, decompressed contents, private
-path/credential patterns (UTF-8/ASCII and UTF-16), exact installed payload hashes,
-and temporary-root install/package/launch/uninstall behavior. Source, Cargo-home,
-home and Rust sysroot paths are remapped at compilation; Windows PDB paths are
-neutralized and release symbols stripped. No checkout archives, PDBs, environment
-dumps, credentials, receipts, user files, or developer installations are packaged.
-Pattern scanning complements the allowlist; it cannot recognize every possible
-secret. Dependency updates still need review. Missing license texts fail assembly;
-the reviewed exceptions are documented under [packaging/licenses](../packaging/licenses/README.md).
+CI validates the committed MAJOR.MINOR.PATCH, verifies Windows x64 and Linux x64,
+and assembles both portable tools and self-extracting installers. It never edits
+the package version. Native jobs run the full Cargo-based verification and
+release acceptance. The LLVM shim rebuild remains a required separate gate.
+macOS is disabled; no macOS artifacts or compatibility are claimed.
 
-Native jobs upload `native-windows` and `native-linux`. After all gates pass, a
-read-only collection job verifies their checksums, version, platform and source
-commit and uploads `release-ready`. Workflow artifacts expire after 14 days.
-The archive inside the artifact preserves Linux modes, even though Actions'
-outer artifact transport does not preserve executable modes.
+Each native job checks the closed distribution inventory, decompressed contents,
+private path/credential patterns (ASCII/UTF-8 and UTF-16), installed payload
+hashes, and temporary-root install/package/launch/uninstall behavior. Source,
+Cargo-home, home and Rust sysroot paths are remapped; Windows PDB paths are
+neutralized. No checkout archives, PDBs, environment dumps, credentials, receipts,
+user files or developer installations enter the distribution. Pattern scanning
+complements the inventory; it cannot recognize every possible secret. Missing
+license texts fail assembly; reviewed exceptions are in
+[packaging/licenses](../packaging/licenses/README.md).
 
-Only a **push of a valid version tag on main's history** can enter the publishing
-job. Manual runs on `main` only upload artifacts. All build/collection
-jobs have `contents: read`, with checkout credentials disabled. Only publication
-gets `contents: write`. It downloads the already-verified set, rechecks checksums,
-uploads every asset into a new draft with `gh release create --verify-tag`, then
-publishes the draft. No Rust compilation or repository code runs with the write
-token. It refuses dirty-source artifacts. A rerun fails if that release already
-exists; it never silently replaces assets. If upload/publication fails, inspect
-the retained draft and workflow artifacts before deciding how to retry.
+Native jobs upload `native-windows` and `native-linux`. After all gates pass,
+read-only collection checks checksums, version, platform and source commit and
+uploads `release-ready`. Workflow artifacts expire after 14 days. The nested
+tar.gz preserves Linux executable modes despite the outer artifact transport.
 
-Before the first release, integrate the reviewed change from `develop` into
-`main` through the repository's normal process, then push `main` for an
-artifact-only rehearsal. The following are **commands for the maintainer after
-authorization**, after local integration; implementing the workflow does not
-execute them or switch the user's checkout:
+Only a main push enters publication. Build/collection jobs have contents read
+permission and disabled checkout credentials; only the publishing job receives
+contents write. It downloads those same tested assets, verifies checksums, and
+derives the release tag from their metadata. It creates the tag at the exact
+tested commit while creating a draft release, uploads assets, then publishes.
+There is no second tag-triggered build, Rust compilation, checkout or repository
+code execution with the write token.
 
-```powershell
-cd C:\Users\kodyb\Projects\doinstall
-git status --short
-git push origin main
-gh run list --workflow release.yml --repo kodybrown/doinstall
-# Copy the rehearsal run ID, then inspect its status and download its assets:
-gh run watch RUN_ID --exit-status --repo kodybrown/doinstall
-gh run download RUN_ID --name release-ready --dir C:/tmp/doinstall-first-release-review --repo kodybrown/doinstall
-```
+Existing version tags must resolve to the tested commit. A published release
+for that commit is recognized through its tag and downloaded source metadata,
+and a rerun leaves its assets untouched. Reusing a published version for different
+source fails with instructions to increment the version. Network/authentication
+errors fail rather than being interpreted as missing releases. Incomplete drafts
+fail clearly and remain available for review; do not delete or overwrite them
+automatically. Inspect the draft and workflow artifacts before choosing recovery.
 
-The repository's current default branch is `main`. GitHub requires a dispatchable
-workflow to be present on the default branch before it can be manually dispatched.
-Once this workflow reaches `main` through the normal authorized integration
-process, manual artifact-only builds of `main` are also available:
+Manual artifact-only review builds:
 
 ```powershell
 gh workflow run release.yml --ref main --repo kodybrown/doinstall
+gh run list --workflow release.yml --repo kodybrown/doinstall
+gh run watch RUN_ID --exit-status --repo kodybrown/doinstall
+gh run download RUN_ID --name release-ready --dir C:/tmp/doinstall-release-review --repo kodybrown/doinstall
 ```
 
-The normal push rehearsal above works without that prerequisite, runs the same
-verification, and uploads `release-ready` without publishing. A valid tag push
-also uses the workflow at the tagged commit. This implementation does not change
-the default branch or repository settings.
+## Local tasks and maintainer procedure
 
-### Tagging with dotask
+Optional reusable sources live in [.tasks/_/rust](../.tasks/_/rust/README.md).
+Users call thin project tasks; shared sources remain product-independent for
+future promotion to dotask's catalog. Installed dotask and Rust are conveniences
+for this local flow. CI and release assembly bootstrap through Cargo without
+installed dotask, Python, .NET or consumer checkouts.
 
-Optional reusable tasks live in [.tasks/_/rust](../.tasks/_/rust/README.md).
-Project root tasks bind generic operations to doinstall's release and packaging
-policy. Installed dotask with Rust tasks, the pinned Rust toolchain, Git and
-authenticated gh are needed only for this maintainer convenience. All CI and
-release operations bootstrap through Cargo without dotask, Python or .NET.
-
-The whole release procedure is:
-
-1. Make changes on `develop` and update the changelog. For a new release,
-   increment the package version before committing (leave 0.1.0 for the first
-   release if it has not yet been published).
-2. Format, lint, build/scan and test locally. Commit the intended source changes,
-   including Cargo.toml/Cargo.lock when incremented.
-3. Promote develop to main through the normal process and push those branches.
-   The current checkout, local main and origin/main must identify the same commit.
-4. Wait for main's push run of release.yml to pass. Branch pushes upload workflow
-   artifacts without publishing a release.
-5. Run `dotask publish` for a native rehearsal, or `dotask publish --push` to
-   additionally tag and push after successful checks, packaging and acceptance.
-6. Wait for the tag-triggered workflow: it rebuilds/verifies Windows x64 and Linux
-   x64, combines their assets and publishes only after every gate succeeds.
+1. Develop on develop, using `dotask build` and `dotask run`.
+2. Occasionally run `dotask create-doinstall-installer` and explicitly launch its
+   reported installer when you want to update your local installation.
+3. Run `dotask test` and resolve failures.
+4. Explicitly run `dotask update-version` for patch, or select minor/major.
+5. Review and commit intended changes, including Cargo.toml, Cargo.lock and the
+   changelog. The version task does not lock tested code; CI verifies the final
+   committed version.
+6. Fast-forward main through the normal process and push it (and develop as
+   appropriate). Actions verifies both targets and publishes automatically.
 
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
-# On develop, before committing/promoting:
-dotask update-version --increment --dry-run
-dotask update-version --increment
-dotask format
-dotask clippy
 dotask build
+dotask run --args '["--version"]'
 dotask test
-# Commit, promote, push and wait for matching main CI through the normal process.
-# Then rehearse locally, or rehearse and create/push the tag:
-dotask publish
-dotask publish --push
+dotask update-version --dry-run
+dotask update-version
+# Alternatively choose ONE: --increment-minor or --increment-major.
+# Review/commit, fast-forward main, and push through the normal Git process.
 ```
 
-`update-version` alone refreshes a small JSON record outside source. Build captures
-one fresh UTC timestamp for all four executables. Each tool's `--version` reports
-`MAJOR.MINOR.PATCH+yyMM.ddhh` and the full UTC build time; Cargo, Git tags, asset
-names and application install versions retain the stable SemVer core. Metadata
-has no SemVer precedence. No date is squeezed into Windows numeric file-version
-fields. An hour stamp may repeat, so full UTC time and commit remain available.
-Ordinary Cargo builds also embed a build timestamp; cached binaries retain the
-time they were compiled. The build script watches RUST_BUILD_TIMESTAMP, allowing
-an explicit reproducible timestamp. Publication never edits tracked version files.
-
-`publish` first checks clean tracked state and matching main CI, then calls
-update-version, format --check, clippy, build (including binary scanning), test,
-create-installer, and finally tag-release --push when explicitly requested.
-Formatting that requires changes fails; fix/commit/promote those changes first.
-The project create-installer task invokes the Rust release command to build a
-fresh matching native set, create both portable and installer deliveries, scan
-and inspect them, and exercise both using temporary installation roots. It uses
-the freshly built builder/runtime/template, never the user's active installation.
-
-Local packaging is also available independently:
+After reviewing and committing the intended changes on develop, start with a
+clean checkout. These are maintainer commands, not actions performed by the
+version task:
 
 ```powershell
-dotask create-installer
-# With Cargo alone and an explicit fresh output directory:
+git status --short
+git switch main
+git merge --ff-only develop
+git push origin develop main
+git switch develop
+```
+
+Stop if fast-forward promotion or the push fails; do not force or replace shared
+history. Your work ends after the push. The Actions run and resulting release
+remain visible on GitHub; publication requires every verification gate to pass.
+
+Build formats source, runs strict Clippy, compiles with private-path remapping,
+and scans all four tools. Run builds once and executes the exact scanned
+doinstall binary. Its --args option is a JSON string array preserving literal
+argument boundaries; the installed dotask cannot forward arbitrary trailing
+arguments. Test builds once, runs workspace tests, checks shim integrity and
+checks Git whitespace. All stop at the first failure.
+
+Build/run/test/installer creation preserve the package version. Update-version
+defaults to a patch increment; --increment is an explicit patch synonym.
+--increment-minor resets patch, --increment-major resets minor/patch, and
+--dry-run writes nothing. It edits only the package manifest and local lockfile
+version, retaining unrelated bytes and dependencies. It does no build, commit,
+merge, push, tag or publication. No local publish/tag-release tasks remain.
+
+Each build captures a fresh UTC date for human --version output:
+MAJOR.MINOR.PATCH+yyMM.ddhh plus full UTC build time. Cargo, asset/install versions
+and GitHub's derived tag use the SemVer core. The date has no SemVer precedence
+and is never squeezed into Windows numeric version fields. Ordinary Cargo
+builds embed their compilation time; cached binaries retain that time.
+RUST_BUILD_TIMESTAMP permits an explicit timestamp. Generated build records
+remain outside source and are independent of explicit version preparation.
+
+Local packaging uses the freshly built builder/runtime/template/server and the
+builder's actual result FilePath. It creates and inspects both native deliveries
+and exercises temporary-root installations without changing active installs or
+persistent PATH. The command itself does not install into your normal location:
+
+```powershell
+dotask create-doinstall-installer
+# Cargo-only equivalent, with a fresh external output directory:
 cargo run --quiet --locked --package doinstall-dev -- release build --output C:/tmp/doinstall-release-review
 ```
 
-The default output is a fresh directory under Cargo's external target directory,
-reported by the command. ZIP/tar.gz files are generated locally by these commands
-and by Actions; they are not checked into Git. Only the authorized version-tag
-workflow publishes GitHub Releases. Consumers download pinned release assets,
-verify SHA256SUMS, and extract them; they do not fetch repository archives or
-compile doinstall. Local Windows packaging does not produce/test Linux binaries;
-the hosted matrix rebuilds both platforms with their own UTC build times.
-
-To only tag a previously reviewed and verified main commit:
-
-```powershell
-dotask tag-release --create=false
-dotask tag-release --push
-```
-
-The tag task reads Cargo's version, fetches origin/main without tags, and requires
-HEAD, main and origin/main to be identical. The latest main push workflow must be
-completed successfully for that exact SHA. Without --push it creates only an
-annotated local tag. --create=false never tags/pushes, even with --push. Untracked
-files do not block it. Existing tags fail; no force, replacement or deletion is
-performed. Failed pushes leave the local tag for inspection. After a local-only
-tag, push it explicitly (`git push origin refs/tags/v0.1.0`, substituting version);
-rerunning tag creation refuses the existing tag. A commit hash is not needed in
-these task commands; Git's raw tag command otherwise defaults to HEAD.
-
-The equivalent manual tag commands remain available after reviewing main CI:
-
-```powershell
-cargo run --quiet --locked --package doinstall-dev -- release version --tag v0.1.0
-git tag -a v0.1.0 main -m 'doinstall v0.1.0'
-git push origin refs/tags/v0.1.0
-```
-
-The tag push reruns all hosted gates. Do not create a separate GitHub release
-manually first: the publisher refuses existing releases. Publishing requires the
-workflow's contents write permission and explicit maintainer authorization.
+Default packaging output is a fresh directory beneath Cargo's external target
+directory, printed on success. ZIP/tar.gz and installers are generated locally
+or by Actions; never commit them. Windows packaging does not build/test Linux,
+and Linux packaging does not build/test Windows. Each CI target compiles native
+tools with its own UTC build time. Consumers download pinned release assets,
+verify SHA256SUMS, and extract them without building doinstall.
 
 ## Local verification and acceptance
 
@@ -345,8 +309,8 @@ git diff --check
 
 Verification includes the Rust release helper's tests. For a focused helper run,
 use `cargo test --package doinstall-dev --locked`. When dotask is installed, an
-additional disposable-project test exercises the shared tasks and publish hooks
-with fake Git/GitHub commands. Without dotask that optional check is skipped;
+additional disposable-project test exercises shared build/run/test/version tasks.
+Publisher shell tests use a fake gh and never access real tags/releases. Without dotask that optional check is skipped;
 ordinary Cargo verification and native release acceptance remain available.
 
 The Rust release command stages one matching native build and passes the reviewed
@@ -378,4 +342,4 @@ tail. Further macOS failures remain unresolved, and macOS CI builds and installe
 acceptance are now temporarily disabled. Those failures no longer gate the
 Windows/Linux releases. macOS source and signing code remain available for future
 work; successful native signing/execution is not claimed. Trusted distribution
-signing and publication remain pending.
+signing remains pending.

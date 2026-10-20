@@ -1,4 +1,5 @@
-description: Project entry point for the shared Rust build task.
+description: Format, lint, build and scan the current tools without changing the package version.
 requires: [{kind: task, value: _/rust/build}]
 steps:
   - run: _/rust/build
+    with: {format-tasks: true}

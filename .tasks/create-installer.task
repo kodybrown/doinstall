@@ -1,6 +1,0 @@
-description: Build and exercise native archives and a self-installer from the current source build.
-requires: [{kind: tool, value: cargo}]
-steps:
-  - exec:
-      executable: cargo
-      arguments: [run, --quiet, --locked, --package, doinstall-dev, --, release, build]

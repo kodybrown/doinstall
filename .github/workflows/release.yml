@@ -3,7 +3,6 @@ name: Verify and release
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -15,9 +14,9 @@ concurrency:
 
 jobs:
   validate-ref:
-    # Manual runs on other branches are skipped. Version tags remain the
-    # explicit publication trigger, but must select a commit already on main.
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    # Main pushes publish only after every gate. Manual main runs are artifacts
+    # only; no build or manual run edits the committed package version.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
@@ -25,17 +24,8 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Validate release identity and main ancestry
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [[ "$REF_TYPE" == tag ]]; then
-            cargo run --quiet --locked --package doinstall-dev -- release version --tag "$REF_NAME"
-            git merge-base --is-ancestor HEAD refs/remotes/origin/main
-          else
-            cargo run --quiet --locked --package doinstall-dev -- release version
-          fi
+      - name: Validate committed package version
+        run: cargo run --quiet --locked --package doinstall-dev -- release version
 
   native:
     needs: validate-ref
@@ -109,13 +99,12 @@ jobs:
         env:
           SOURCE: ${{ runner.temp }}/native
           OUTPUT: ${{ runner.temp }}/release
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           args=()
-          if [[ "$REF_TYPE" == tag ]]; then
-            args+=(--tag "$REF_NAME" --publishing)
+          if [[ "$EVENT" == push ]]; then
+            args+=(--publishing)
           fi
           cargo run --quiet --locked --package doinstall-dev -- release collect --source "$SOURCE" --output "$OUTPUT" --commit "$SOURCE_COMMIT" "${args[@]}"
           cd "$OUTPUT"
@@ -129,7 +118,7 @@ jobs:
           retention-days: 14
 
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: collect
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -147,13 +136,45 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
           ASSETS: ${{ runner.temp }}/release
         run: |
           set -euo pipefail
-          # create fails if this release already exists. Never overwrite assets
-          # or mutate a previous release on a rerun; a failed draft is reviewable.
+          export TAG
+          TAG=$(jq -er '.tag | select(test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' "$ASSETS/RELEASE-METADATA.json")
+          jq -e --arg commit "$COMMIT" '.source_commit == $commit' "$ASSETS/RELEASE-METADATA.json" > /dev/null
+
+          # Query successful API responses rather than treating authentication or
+          # network failures as "not found". Never move an existing version tag.
+          reference=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$TAG" --jq '[.[] | select(.ref == ("refs/tags/" + env.TAG))] | first // empty')
+          if [[ -n "$reference" ]]; then
+            kind=$(jq -er '.object.type' <<< "$reference")
+            target=$(jq -er '.object.sha' <<< "$reference")
+            while [[ "$kind" == tag ]]; do
+              reference=$(gh api "repos/$GH_REPO/git/tags/$target")
+              kind=$(jq -er '.object.type' <<< "$reference")
+              target=$(jq -er '.object.sha' <<< "$reference")
+            done
+            if [[ "$kind" != commit || "$target" != "$COMMIT" ]]; then
+              echo "Version $TAG already identifies different source. Run dotask update-version, commit, and push main again." >&2
+              exit 1
+            fi
+          fi
+          existing=$(gh api "repos/$GH_REPO/releases" --paginate --jq '.[] | select(.tag_name == env.TAG)')
+          if [[ -n "$existing" ]]; then
+            if [[ -z "$reference" ]] || ! jq -e '.draft == false' <<< "$existing" > /dev/null; then
+              echo "An incomplete release for $TAG exists. Inspect its draft and workflow artifacts before retrying." >&2
+              exit 1
+            fi
+            review=$(mktemp -d)
+            gh release download "$TAG" --pattern RELEASE-METADATA.json --dir "$review"
+            jq -e --arg tag "$TAG" --arg commit "$COMMIT" '.tag == $tag and .source_commit == $commit' "$review/RELEASE-METADATA.json" > /dev/null
+            echo "Release $TAG already published for this commit; existing assets remain unchanged."
+            exit 0
+          fi
+
+          # GitHub creates its required tag at the exact tested SHA. All assets
+          # enter a draft before publication; failure leaves it for inspection.
           printf 'Source commit: %s\n\nNative Windows Server 2022 x64 and Ubuntu 22.04 x64 verification, archive inspection, and temporary-root install/package/uninstall acceptance passed.\n\nUse the tools archive for CI or the setup executable for interactive installation. Check SHA256SUMS before running any downloaded file. Exact toolchains and per-platform file hashes are in RELEASE-METADATA.json. Linux baseline: Ubuntu 22.04 x64 / glibc 2.35; other platforms are not release-tested.\n' "$COMMIT" > "$RUNNER_TEMP/release-notes.md"
-          gh release create "$TAG" "$ASSETS"/* --verify-tag --target "$COMMIT" --title "doinstall $TAG" --draft --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release create "$TAG" "$ASSETS"/* --target "$COMMIT" --title "doinstall $TAG" --draft --notes-file "$RUNNER_TEMP/release-notes.md"
           gh release edit "$TAG" --draft=false

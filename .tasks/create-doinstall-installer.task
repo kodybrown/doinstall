@@ -1,0 +1,10 @@
+description: Create and exercise native portable tools and a self-installer from the current source version.
+requires: [{kind: task, value: format}, {kind: task, value: clippy}, {kind: tool, value: cargo}]
+steps:
+  - run: format
+  - run: clippy
+  # The native release operation owns the single compile/scan and packages that
+  # exact matching tool set, then exercises it under temporary install roots.
+  - exec:
+      executable: cargo
+      arguments: [run, --quiet, --locked, --package, doinstall-dev, --, release, build]

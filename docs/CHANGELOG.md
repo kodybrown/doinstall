@@ -652,3 +652,41 @@
   passed. Cargo target/build directories remain C:/tmp/_rust/doinstall/target.
   Preserve user configuration and persistent PATH/active installations. No actual
   tags, pushes, releases, or changes to dotask/filekeep were made.
+
+### 2026-10-20 Use explicit version preparation and main-triggered releases
+
+- Make shared build format, run strict Clippy, compile with private-path remapping,
+  and scan executables while preserving the package version. Add shared/project
+  run tasks that build once and execute Cargo's reported inspected binary with
+  literal JSON-array arguments, preserving spaces, quotes, empty strings, Unicode
+  and exit codes. Shared test builds once before workspace tests; the project
+  wrapper also verifies shim integrity and Git whitespace.
+- Make explicitly invoked update-version increment patch by default, with
+  minor/major overrides and dry-run. Edit only the manifest/local lockfile version,
+  preserving surrounding bytes and dependencies; do no build, Git operations or
+  generated date-record writes. Keep ordinary compilation's human UTC stamp
+  independent of the manually prepared SemVer version.
+- Replace publish/tag-release tasks with the maintainer-owned test, version,
+  review/commit, fast-forward main and push flow. Main pushes verify Windows/Linux
+  and publish the same tested portable archives and self-extracting installers,
+  checksums and metadata. Derive GitHub's internal tag from that committed version
+  at the exact tested SHA; remove tag-push triggers and the second release build.
+  Manual main runs remain artifact-only and build/collection jobs remain read-only.
+- Refuse version tags that identify different source, authentication/network
+  failures and incomplete drafts. Recognize an already published same-commit
+  release through its existing tag and source metadata without replacing assets.
+  Add the create-doinstall-installer project task for current native self-packaging,
+  inspection and temporary-root acceptance. Document the new task/release flow
+  and reusable task interfaces; retain Cargo-only bootstrap without Python.
+- Verification: build.cmd verify and dotask test passed 154 Windows Rust tests, formatting,
+  strict Clippy, shim integrity and whitespace. Disposable-project installed-dotask
+  acceptance covered unchanged versions on build/run/test, explicit increments,
+  previews/conflicts, argument boundaries, formatting, Clippy failure and scan
+  failure before later operations. The actual publisher shell passed simulated
+  new/existing/conflicting releases, network/draft/metadata/upload failures with
+  fake gh. Actionlint 1.7.11 and Markdown file links passed. The project run task
+  reported the current version; installer creation passed Windows ZIP and
+  self-installer inspection, portable discovery and temporary-root install,
+  consumer packaging and uninstall acceptance. No active installation or PATH
+  changed. Cargo target/build directories remain C:/tmp/_rust/doinstall/target.
+  No actual version increment, tag, push or release publication was performed.

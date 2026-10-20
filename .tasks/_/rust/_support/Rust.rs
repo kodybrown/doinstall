@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 use dotask_sdk::{bail, json, serde_json, BuildContext, Context, Result, Value};
 use std::{
-  collections::BTreeSet,
+  collections::{BTreeMap, BTreeSet},
   fs,
   path::PathBuf,
   time::{SystemTime, UNIX_EPOCH},
@@ -104,6 +104,9 @@ fn calendar(seconds: u64) -> (String, String) {
 }
 fn target(p: &BuildContext, data: &Value) -> Result<PathBuf> {
   let path = PathBuf::from(data["target_directory"].as_str().context("Missing target_directory")?);
+  if std::path::absolute(&path)?.starts_with(std::path::absolute(p.root())?) {
+    bail!("Cargo target_directory must be outside source");
+  }
   fs::create_dir_all(&path)?;
   let path = fs::canonicalize(path)?;
   if path.starts_with(fs::canonicalize(p.root())?) {
@@ -172,13 +175,18 @@ pub fn update(p: &BuildContext) -> Result<()> {
   let package = package(p, &data)?;
   let old = package["version"].as_str().unwrap();
   let mut version = parts(old)?;
-  let flags = [
+  let mut flags = [
     flag(p, "increment-major"),
     flag(p, "increment-minor"),
     flag(p, "increment"),
   ];
   if flags.iter().filter(|v| **v).count() > 1 {
     bail!("Choose only one increment flag");
+  }
+  // Version changes happen only through this explicitly invoked task. With no
+  // selector the user's release-preparation action means one patch increment.
+  if !flags.iter().any(|v| *v) {
+    flags[2] = true;
   }
   if let Some(index) = flags.iter().position(|v| *v) {
     version[index] = version[index].checked_add(1).context("Version overflow")?;
@@ -244,8 +252,8 @@ pub fn update(p: &BuildContext) -> Result<()> {
     }
     drop(first);
     drop(second);
-    let validated = match metadata(p) {
-      Ok(data) => data,
+    match metadata(p) {
+      Ok(_) => (),
       Err(error) => {
         if fs::read_to_string(&manifest)? == changed && fs::read_to_string(&lock)? == lock_changed {
           fs::write(&manifest, source)?;
@@ -253,13 +261,8 @@ pub fn update(p: &BuildContext) -> Result<()> {
         }
         return Err(error);
       }
-    };
-    return record(p, &validated, seconds()?);
-  }
-  if !flag(p, "dry-run") {
-    record(p, &data, seconds()?)?;
-  } else {
-    println!("Would refresh UTC build metadata outside source");
+    }
+    return Ok(());
   }
   Ok(())
 }
@@ -323,6 +326,35 @@ fn privacy(data: &[u8], markers: &[String]) -> Result<()> {
 }
 pub fn operation(p: &BuildContext) -> Result<()> {
   let action = p.string("operation")?;
+  if action == "run" {
+    let data = metadata(p)?;
+    let package = package(p, &data)?;
+    let profile = string(p, "profile", "release");
+    let report: Value = serde_json::from_slice(&fs::read(build_report(p, &data)?)?)?;
+    if report["profile"] != profile || report["version"] != package["version"] {
+      bail!("The selected package/profile must be built before running");
+    }
+    let binaries = report["binaries"].as_object().context("Missing built executable inventory")?;
+    let requested = string(p, "bin", "");
+    let selected = if !requested.is_empty() {
+      requested
+    } else if let Some(default) = package["default_run"].as_str() {
+      default.to_owned()
+    } else if binaries.len() == 1 {
+      binaries.keys().next().unwrap().clone()
+    } else {
+      bail!("Select the executable with --bin");
+    };
+    let binary = binaries
+      .get(&selected)
+      .and_then(Value::as_str)
+      .context("Executable was not built/scanned")?;
+    let arguments: Vec<String> =
+      serde_json::from_str(&string(p, "args", "[]")).context("--args must be a JSON array of strings")?;
+    // Execute Cargo's reported artifact directly: another cargo run could
+    // recompile with different flags and bypass the just-completed scan.
+    return p.execute(p.command(binary).args(arguments));
+  }
   let mut command = p.command("cargo");
   command.arg(action);
   match action {
@@ -335,6 +367,9 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       }
     }
     "test" | "clippy" => {
+      // Clippy and tests compile too; enforce output policy before invoking
+      // either rather than discovering a source-local target during build.
+      target(p, &metadata(p)?)?;
       command.arg("--locked");
       let name = string(p, "package", "");
       if name.is_empty() {
@@ -405,12 +440,20 @@ pub fn operation(p: &BuildContext) -> Result<()> {
         .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
         .env("RUST_BUILD_TIMESTAMP", seconds.to_string());
       let output = p.capture(&mut command)?;
-      let mut binaries = vec![];
+      let mut binaries = BTreeMap::new();
       for line in output.lines() {
         if let Ok(record) = serde_json::from_str::<Value>(line) {
           if record["reason"] == "compiler-artifact" {
             if let Some(path) = record["executable"].as_str() {
-              binaries.push(PathBuf::from(path));
+              if record["target"]["kind"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+              {
+                binaries.insert(
+                  record["target"]["name"].as_str().context("Missing binary name")?.to_owned(),
+                  path.to_owned(),
+                );
+              }
             }
           }
           if let Some(message) = record["message"]["rendered"].as_str() {
@@ -421,10 +464,18 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       if binaries.is_empty() {
         bail!("Build produced no executable to scan");
       }
-      for binary in binaries {
+      for binary in binaries.values().map(PathBuf::from) {
         privacy(&fs::read(&binary)?, &markers)?;
         println!("Private-content check passed: {}", binary.display());
       }
+      // Write only after every reported executable passed inspection. Run/test
+      // orchestration stops on build failure and cannot consume an old success.
+      fs::write(
+        build_report(p, &data)?,
+        serde_json::to_vec_pretty(&json!({
+          "version": package["version"], "profile": string(p, "profile", "release"), "binaries": binaries
+        }))?,
+      )?;
       return Ok(());
     }
     _ => bail!("Unsupported Cargo operation"),
@@ -446,81 +497,11 @@ pub fn operation(p: &BuildContext) -> Result<()> {
   }
   Ok(())
 }
-pub fn tag(p: &BuildContext) -> Result<()> {
-  let branch = string(p, "branch", "main");
-  if !branch.bytes().all(|b| b.is_ascii_alphanumeric() || b"/._-".contains(&b))
-    || branch.starts_with('-')
-    || branch.contains("..")
-  {
-    bail!("Invalid release branch");
-  }
-  for args in [vec!["diff", "--quiet"], vec!["diff", "--cached", "--quiet"]] {
-    p.execute(p.command("git").args(args))
-      .context("Commit tracked changes before tagging a release")?;
-  }
-  let commit = p.capture(p.command("git").args(["log", "-1", "--format=format:%H", &branch, "--"]))?;
-  let commit = commit.trim();
-  if commit.len() != 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
-    bail!("Invalid source commit");
-  }
-  let tracking = format!("refs/remotes/origin/{branch}");
-  p.execute(p.command("git").args([
-    "fetch",
-    "--no-tags",
-    "origin",
-    &format!("refs/heads/{branch}:{tracking}"),
-  ]))?;
-  for reference in ["HEAD", branch.as_str(), tracking.as_str()] {
-    for (left, right) in [(commit, reference), (reference, commit)] {
-      p.execute(p.command("git").args(["merge-base", "--is-ancestor", left, right]))
-        .context("HEAD, the local release branch and origin's release branch must identify the same commit; promote and push first")?;
-    }
-  }
-  let data = metadata(p)?;
-  let version = package(p, &data)?["version"].as_str().context("Missing version")?.to_owned();
-  parts(&version)?;
-  let repo = string(p, "repo", "");
-  let workflow = string(p, "workflow", "release.yml");
-  let query = format!(
-    r#".[0] | if .headSha == "{commit}" and .status == "completed" and .conclusion == "success" then "Main verification passed" else error("The latest branch push must pass CI for this commit before tagging.") end"#
-  );
-  let mut gh = p.command("gh");
-  gh.args([
-    "run",
-    "list",
-    "--workflow",
-    &workflow,
-    "--branch",
-    &branch,
-    "--event",
-    "push",
-    "--limit",
-    "1",
-    "--json",
-    "headSha,status,conclusion",
-    "--jq",
-    &query,
-  ]);
-  if !repo.is_empty() {
-    gh.args(["--repo", &repo]);
-  }
-  p.execute(&mut gh)?;
-  let tag = format!("v{version}");
-  println!("Release {tag} from {branch} at {commit}");
-  if !flag(p, "create") {
-    println!("Preview only; no tag or push");
-    return Ok(());
-  }
-  p.execute(
-    p.command("git")
-      .args(["tag", "-a", &tag, commit, "-m", &format!("Release {tag}")]),
-  )?;
-  if flag(p, "push") {
-    p.execute(p.command("git").args(["push", "origin", &format!("refs/tags/{tag}")]))?;
-  }
-  Ok(())
+fn build_report(p: &BuildContext, data: &Value) -> Result<PathBuf> {
+  let directory = target(p, data)?.join("rust-build");
+  fs::create_dir_all(&directory)?;
+  Ok(directory.join(format!("{}-executables.json", package(p, data)?["name"].as_str().unwrap())))
 }
-
 #[cfg(test)]
 mod tests {
   use super::*;

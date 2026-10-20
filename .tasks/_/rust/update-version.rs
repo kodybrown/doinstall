@@ -1,5 +1,5 @@
 // dotask: 1
-// description: Refresh external UTC build metadata; optionally increment a Cargo package version.
+// description: Explicitly increment the Cargo package version, patch by default, without building or Git operations.
 // options:
 //   - {name: manifest, type: path, default: Cargo.toml}
 //   - {name: package, default: ''}

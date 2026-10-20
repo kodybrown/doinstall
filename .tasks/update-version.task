@@ -1,4 +1,4 @@
-description: Project entry point for the shared Rust update-version task.
+description: Explicitly increment the package version, patch by default; no build, commit or push.
 options:
   - {name: increment, type: bool, default: false}
   - {name: increment-minor, type: bool, default: false}

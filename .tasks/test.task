@@ -1,4 +1,11 @@
-description: Project entry point for the shared Rust test task.
-requires: [{kind: task, value: _/rust/test}]
+description: Build, run all tests, verify shim integrity and check whitespace without changing the version.
+requires: [{kind: task, value: _/rust/test}, {kind: tool, value: cargo}, {kind: tool, value: git}]
 steps:
   - run: _/rust/test
+    with: {format-tasks: true}
+  - exec:
+      executable: cargo
+      arguments: [run, --quiet, --locked, --package, doinstall-dev, --, shim, --verify]
+  - exec:
+      executable: git
+      arguments: [diff, --check]

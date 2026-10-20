@@ -1,9 +1,15 @@
-description: Run locked release-profile tests for the workspace or selected package.
+description: Build once, then run locked release-profile tests for the workspace or selected package.
 options:
   - {name: manifest, type: path, default: Cargo.toml}
   - {name: package, default: ''}
-requires: [{kind: task, value: _/rust/cargo.rs}]
+  - {name: format-tasks, type: bool, default: false}
+requires: [{kind: task, value: _/rust/build}, {kind: task, value: _/rust/cargo.rs}]
 steps:
+  - run: _/rust/build
+    with:
+      manifest: {parameter: manifest}
+      package: {parameter: package}
+      format-tasks: {parameter: format-tasks}
   - run: _/rust/cargo.rs
     with:
       operation: test
