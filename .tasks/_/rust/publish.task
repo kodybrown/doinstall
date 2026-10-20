@@ -1,0 +1,25 @@
+description: Rehearse a native release, then optionally create and push its tag.
+options:
+  - {name: push, type: bool, default: false, description: Create and push the tag after all checks pass.}
+requires:
+  - {kind: task, value: _/rust/update-version.rs}
+  - {kind: task, value: _/rust/format.task}
+  - {kind: task, value: _/rust/clippy.task}
+  - {kind: task, value: _/rust/build.task}
+  - {kind: task, value: _/rust/test.task}
+  - {kind: task, value: create-installer}
+  - {kind: task, value: tag-release}
+steps:
+  # Validate the commit first and again immediately before tagging.
+  - run: tag-release
+    with: {create: false, push: false}
+  - run: _/rust/update-version.rs
+  - run: _/rust/format.task
+    with: {check: true}
+  - run: _/rust/clippy.task
+  - run: _/rust/build.task
+  - run: _/rust/test.task
+  - run: create-installer
+  - run: tag-release
+    when: {parameter: push}
+    with: {create: true, push: true}

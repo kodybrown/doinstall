@@ -1,6 +1,7 @@
 //! Cargo bootstraps development without an installed doinstall or task runner.
 //! Packaging invokes freshly built tools; keep this helper outside their output.
 mod installer;
+mod release;
 use anyhow::{bail, ensure, Context, Result};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, process::Command};
@@ -59,18 +60,19 @@ fn run() -> Result<()> {
   let args: Vec<_> = std::env::args().skip(1).collect();
   let Some(action) = args.first() else {
     println!(
-      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR], verify, shim [--verify]"
+      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR], release version|build|collect, verify, shim [--verify]"
     );
     return Ok(());
   };
   match action.as_str() {
+    "release" => release::cli(&args[1..]),
     "build" => {
       let stage = match &args[1..] {
         [] => None,
         [option, path] if option == "--stage-dir" => Some(PathBuf::from(path)),
         _ => bail!("Use build [--stage-dir DIR]"),
       };
-      cargo(&["build", "--package", "doinstall", "--locked", "--release"])?;
+      release::build_tools()?;
       let output = target()?.join("release");
       if let Some(stage) = stage {
         fs::create_dir_all(&stage)?;
@@ -112,7 +114,7 @@ fn run() -> Result<()> {
           }
         }
       }
-      cargo(&["build", "--package", "doinstall", "--locked", "--release"])?;
+      release::build_tools()?;
       let output = output.unwrap_or_else(|| {
         root().join("artifacts/installers").join(format!(
           "{}-{}",
@@ -146,7 +148,7 @@ fn run() -> Result<()> {
       ensure!(args.len() == 1, "verify takes no arguments");
       println!("Verification checkout: {}", root().display());
       cargo(&["fmt", "--all", "--", "--check"])?;
-      cargo(&["test", "--package", "doinstall", "--locked", "--release"])?;
+      cargo(&["test", "--workspace", "--locked", "--release"])?;
       cargo(&[
         "clippy",
         "--workspace",

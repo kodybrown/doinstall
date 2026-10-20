@@ -12,6 +12,11 @@
   cargo metadata for the evaluated target directory; preserve user tool settings.
 - Keep doinstall independent of dotask: no project references, source includes,
   installed dotask requirement, .NET SDK, or dotask-specific configuration reads.
+  Optional maintainer tasks may use dotask, but Cargo-only development and CI
+  must remain available. Keep reusable task sources in .tasks/_/rust and project
+  policy/payload wrappers at the task root; do not hardcode doinstall into shared
+  tasks. Use Rust or declarative .task automation. Never add Python helpers or a
+  Python requirement to tasks, builds, tests, packaging, or releases.
 - README.md introduces the product; docs/INSTALLATION.md owns the YAML and
   installation contract. Preserve receipts, immutable builds, activation recovery,
   and refusal of unrecognized existing state. No compatibility loaders or migrations.

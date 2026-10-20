@@ -1,0 +1,13 @@
+description: Build a Cargo package with private-path remapping and scan its reported executables.
+options:
+  - {name: manifest, type: path, default: Cargo.toml}
+  - {name: package, default: ''}
+  - {name: profile, default: release}
+requires: [{kind: task, value: _/rust/cargo.rs}]
+steps:
+  - run: _/rust/cargo.rs
+    with:
+      operation: build
+      manifest: {parameter: manifest}
+      package: {parameter: package}
+      profile: {parameter: profile}

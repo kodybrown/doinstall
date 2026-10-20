@@ -14,11 +14,15 @@ mod package;
 mod packaging;
 mod self_extract;
 mod settings_files;
+mod tool_version;
 mod user_path;
 mod workflow;
 use anyhow::{bail, ensure, Context, Result};
 use std::path::PathBuf;
 fn main() {
+  if tool_version::print(&std::env::args().skip(1).collect::<Vec<_>>(), "doinstall-builder") {
+    return;
+  }
   if let Err(error) = run() {
     eprintln!("doinstall-builder: {error:#}");
     std::process::exit(1);

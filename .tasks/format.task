@@ -1,0 +1,9 @@
+description: Project entry point for the shared Rust format task.
+options:
+  - {name: check, type: bool, default: false}
+requires: [{kind: task, value: _/rust/format}]
+steps:
+  - run: _/rust/format
+    with:
+      check: {parameter: check}
+      format-tasks: true

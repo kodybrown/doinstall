@@ -1,0 +1,4 @@
+description: Project entry point for the shared Rust clippy task.
+requires: [{kind: task, value: _/rust/clippy}]
+steps:
+  - run: _/rust/clippy

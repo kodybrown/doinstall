@@ -1,0 +1,4 @@
+description: Project entry point for the shared Rust test task.
+requires: [{kind: task, value: _/rust/test}]
+steps:
+  - run: _/rust/test

@@ -8,6 +8,7 @@ mod included_process;
 mod launchers;
 mod model;
 mod settings_files;
+mod tool_version;
 mod tui;
 mod user_path;
 mod workflow;
@@ -15,6 +16,9 @@ mod workflow;
 use anyhow::{ensure, Context, Result};
 use std::path::PathBuf;
 fn main() {
+  if tool_version::print(&std::env::args().skip(1).collect::<Vec<_>>(), "doinstall") {
+    return;
+  }
   let default_panic = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |info| {
     if !console::report_worker_panic(info) {

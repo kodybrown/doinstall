@@ -17,11 +17,12 @@ tool layout, compatibility limits, and the pending first-release procedure.
 Keep the matching builder, runtime, and launcher template together; consumers
 need no Rust SDK or doinstall source checkout.
 
-Maintainers with dotask installed can preview a release with
-`dotask tag-release --create=false`, then create and push its version tag with
-`dotask tag-release --push`. The optional [.task](.tasks/tag-release.task) reads
-Cargo's version and requires matching local/remote `main` plus successful main CI;
-see the [release procedure](docs/RELEASES.md#tagging-with-dotask).
+Optional Rust tasks live under [.tasks/_/rust](.tasks/_/rust/README.md), with thin
+project entry points: `dotask format`, `dotask clippy`, `dotask build`,
+`dotask test`, `dotask update-version`, `dotask create-installer`, and
+`dotask publish`. Build scans the compiled tools for private content. Publication
+requires an explicit `--push` and successful matching main CI; see the
+[release procedure](docs/RELEASES.md#tagging-with-dotask).
 
 Build doinstall's own self-extracting installer from this source checkout:
 
@@ -39,7 +40,8 @@ uninstall, and tool discovery from dotask or another build system.
 ## Build from source
 
 The pinned Rust 1.95.0 toolchain, Cargo, rustfmt, clippy, and a host linker are
-required. Rustup reads `rust-toolchain.toml`; release scripting also uses Python 3.10+.
+required. Rustup reads `rust-toolchain.toml`. All development/release helpers are
+Rust and run through Cargo; Python and installed dotask are not required.
 
 ```powershell
 .\build.cmd build

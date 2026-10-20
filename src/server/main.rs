@@ -1,5 +1,7 @@
 //! Small native operations that need structured data or private process I/O.
 //! Package/service orchestration stays in the reusable YAML recipe.
+#[path = "../tool_version.rs"]
+mod tool_version;
 use anyhow::{bail, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -93,6 +95,9 @@ struct Credentials {
   redis: String,
 }
 fn main() {
+  if tool_version::print(&std::env::args().skip(1).collect::<Vec<_>>(), "doinstall-server") {
+    return;
+  }
   if let Err(error) = run() {
     // Do not include SQL, credentials, child stderr, or private file contents.
     eprintln!("doinstall-server: {error:#}");

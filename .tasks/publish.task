@@ -1,0 +1,8 @@
+description: Project entry point for the shared Rust publish task.
+options:
+  - {name: push, type: bool, default: false}
+requires: [{kind: task, value: _/rust/publish}]
+steps:
+  - run: _/rust/publish
+    with:
+      push: {parameter: push}

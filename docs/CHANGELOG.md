@@ -606,3 +606,49 @@
   links and git diff --check passed. Cargo target/build directories remain
   C:/tmp/_rust/doinstall/target. Linux task execution is not claimed. No actual
   tags, pushes or releases were created; active installations and PATH were unchanged.
+
+### 2026-10-20 Add reusable Rust tasks and remove Python release tooling
+
+- Develop reusable Cargo build, test, format, Clippy, update-version, tag-release
+  and publish tasks under .tasks/_/rust, including their declared Rust support
+  files. Keep thin project entry points and doinstall-specific self-packaging at
+  the task root. Do not hardcode product/repository names into reusable code or
+  fabricate shared-catalog ownership; future catalog promotion remains separate.
+- Replace all four Python release/test files with Cargo-bootstrapped Rust release
+  assembly, boundary tests, native acceptance and artifact collection. Actions
+  invokes Cargo directly, retaining main-only triggers, Windows/Linux gates,
+  pinned tools/actions, read-only builds and a separate release-writing publisher.
+  Record the no-Python policy in AGENTS.md; installed dotask/.NET remain optional.
+- Give all four native tools --version output with a shared UTC build identity:
+  MAJOR.MINOR.PATCH+yyMM.ddhh and full UTC time. Keep Cargo, tags and asset/install
+  versions on the stable SemVer core. Refresh generated metadata outside source;
+  optional patch/minor/major increments edit only literal package versions and
+  their local lockfile entry, preserving comments/BOM/EOLs and dependencies.
+- Make task/build-helper builds remap private paths and scan resulting binaries.
+  Preserve closed payload inventories, dependency notices, archive traversal/link
+  checks, Linux executable modes, matching adjacent tool discovery, installed
+  payload hashes and native self-installer/consumer-installer acceptance. Native
+  assembly uses the current source build and builder-returned FilePath, never an
+  active installation. Generate ZIP/tar.gz locally or in Actions, outside source.
+- Publish rehearses by default. Require matching clean main/main CI, then check
+  formatting, lint, build/scan, test, package/inspect/exercise deliveries and only
+  then tag/push with explicit --push. Never commit, promote, push branches, force
+  or delete tags automatically. Shared formatting leaves catalog task copies
+  alone unless explicitly requested; this project's wrapper formats its originals.
+- Verification: build.cmd verify passed 152 Windows Rust tests and strict Clippy,
+  formatting, shim integrity and whitespace. Four shared-helper unit tests passed.
+  Installed-dotask disposable-project acceptance covered independent task copies,
+  increments/previews, all tag guards, existing tags, failed pushes, binary private
+  content, publish ordering, packaging failure and safe default publication; Git
+  and GitHub mutations were simulated. Ubuntu 22.04/glibc 2.35 Docker verification
+  passed 133 native tests and Clippy; optional installed-dotask acceptance skipped
+  there. ZIP/tar.gz and self-installers passed native temporary-root acceptance on
+  both platforms; combined asset/checksum collection passed. Linux dotask task
+  execution and macOS/ARM64 native acceptance are not claimed.
+- Rebuilt both shim architectures with Ubuntu LLVM 14 as a compilation check;
+  retain the original LLVM 22 delivery bytes and native Windows x64 acceptance.
+  Refresh the Rust build-helper integrity hash; do not claim byte-identical
+  reproduction across LLVM versions. Actionlint 1.7.11 and documentation links
+  passed. Cargo target/build directories remain C:/tmp/_rust/doinstall/target.
+  Preserve user configuration and persistent PATH/active installations. No actual
+  tags, pushes, releases, or changes to dotask/filekeep were made.

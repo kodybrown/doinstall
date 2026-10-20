@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  PYTHONDONTWRITEBYTECODE: '1'
-
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
@@ -34,10 +31,10 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           if [[ "$REF_TYPE" == tag ]]; then
-            python scripts/release.py version --tag "$REF_NAME"
+            cargo run --quiet --locked --package doinstall-dev -- release version --tag "$REF_NAME"
             git merge-base --is-ancestor HEAD refs/remotes/origin/main
           else
-            python scripts/release.py version
+            cargo run --quiet --locked --package doinstall-dev -- release version
           fi
 
   native:
@@ -65,7 +62,7 @@ jobs:
         run: rustup show active-toolchain
       - name: Verify standalone project
         run: |
-          python -m unittest discover -s scripts -p 'test_*.py'
+          rustfmt --check --edition 2024 .tasks/_/rust/*.rs
           if [[ "$RUNNER_OS" == Windows ]]; then
             MSYS_NO_PATHCONV=1 cmd.exe /d /c build.cmd verify
           else
@@ -74,7 +71,7 @@ jobs:
       - name: Build, inspect and exercise native deliveries
         env:
           RELEASE_OUTPUT: ${{ runner.temp }}/doinstall-release
-        run: python scripts/release.py build --output "$RELEASE_OUTPUT"
+        run: cargo run --quiet --locked --package doinstall-dev -- release build --output "$RELEASE_OUTPUT"
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: native-${{ matrix.platform }}
@@ -120,7 +117,7 @@ jobs:
           if [[ "$REF_TYPE" == tag ]]; then
             args+=(--tag "$REF_NAME" --publishing)
           fi
-          python scripts/collect_release.py --source "$SOURCE" --output "$OUTPUT" --commit "$SOURCE_COMMIT" "${args[@]}"
+          cargo run --quiet --locked --package doinstall-dev -- release collect --source "$SOURCE" --output "$OUTPUT" --commit "$SOURCE_COMMIT" "${args[@]}"
           cd "$OUTPUT"
           sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

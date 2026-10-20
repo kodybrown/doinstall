@@ -1,0 +1,14 @@
+description: Project entry point for the shared Rust update-version task.
+options:
+  - {name: increment, type: bool, default: false}
+  - {name: increment-minor, type: bool, default: false}
+  - {name: increment-major, type: bool, default: false}
+  - {name: dry-run, type: bool, default: false}
+requires: [{kind: task, value: _/rust/update-version}]
+steps:
+  - run: _/rust/update-version
+    with:
+      increment: {parameter: increment}
+      increment-minor: {parameter: increment-minor}
+      increment-major: {parameter: increment-major}
+      dry-run: {parameter: dry-run}

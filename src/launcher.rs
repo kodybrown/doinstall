@@ -4,6 +4,7 @@ mod binary;
 mod files;
 mod model;
 mod self_extract;
+mod tool_version;
 use anyhow::{ensure, Context, Result};
 use std::{ffi::OsString, fs, path::PathBuf, process::Command};
 
@@ -22,6 +23,9 @@ static TEMPLATE_IDENTITY: TemplateIdentity = TemplateIdentity {
 };
 
 fn main() {
+  if tool_version::print(&std::env::args().skip(1).collect::<Vec<_>>(), "doinstall-launcher") {
+    return;
+  }
   // Retain the template identifier in the release binary even with LTO/stripping.
   std::hint::black_box(&TEMPLATE_IDENTITY);
   match run() {

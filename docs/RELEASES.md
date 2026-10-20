@@ -152,7 +152,7 @@ pull requests do not trigger it. Manual `workflow_dispatch` builds are accepted
 only for `main`; other refs skip the build jobs. Before any build starts, version
 tags must exactly match Cargo and point to a commit already reachable from remote
 `main`. Native Windows and Linux jobs run the repository's full
-`verify` command and release-script boundary tests, then create both deliveries.
+`verify` command, including Rust release boundary tests, then create both deliveries.
 Only Windows x64 and Linux x64 are built and exercised. The macOS verification
 job is temporarily disabled, so it cannot generate test installers or block
 artifact collection and publication. The LLVM shim rebuild check remains a gate.
@@ -219,67 +219,111 @@ the default branch or repository settings.
 
 ### Tagging with dotask
 
-After reviewing the successful rehearsal and obtaining release authorization,
-the optional [.tasks/tag-release.task](../.tasks/tag-release.task) handles the
-tag syntax, version and commit for you. It requires an installed dotask with YAML
-workflow support, Git, Python 3.10+, and authenticated GitHub CLI (`gh auth login`).
-It needs no task SDK, compilation or `.dotasks.yaml` configuration. Building,
-verification, packaging and release CI remain independent of dotask.
+Optional reusable tasks live in [.tasks/_/rust](../.tasks/_/rust/README.md).
+Project root tasks bind generic operations to doinstall's release and packaging
+policy. Installed dotask with Rust tasks, the pinned Rust toolchain, Git and
+authenticated gh are needed only for this maintainer convenience. All CI and
+release operations bootstrap through Cargo without dotask, Python or .NET.
+
+The whole release procedure is:
+
+1. Make changes on `develop` and update the changelog. For a new release,
+   increment the package version before committing (leave 0.1.0 for the first
+   release if it has not yet been published).
+2. Format, lint, build/scan and test locally. Commit the intended source changes,
+   including Cargo.toml/Cargo.lock when incremented.
+3. Promote develop to main through the normal process and push those branches.
+   The current checkout, local main and origin/main must identify the same commit.
+4. Wait for main's push run of release.yml to pass. Branch pushes upload workflow
+   artifacts without publishing a release.
+5. Run `dotask publish` for a native rehearsal, or `dotask publish --push` to
+   additionally tag and push after successful checks, packaging and acceptance.
+6. Wait for the tag-triggered workflow: it rebuilds/verifies Windows x64 and Linux
+   x64, combines their assets and publishes only after every gate succeeds.
 
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
+# On develop, before committing/promoting:
+dotask update-version --increment --dry-run
+dotask update-version --increment
+dotask format
+dotask clippy
+dotask build
+dotask test
+# Commit, promote, push and wait for matching main CI through the normal process.
+# Then rehearse locally, or rehearse and create/push the tag:
+dotask publish
+dotask publish --push
+```
+
+`update-version` alone refreshes a small JSON record outside source. Build captures
+one fresh UTC timestamp for all four executables. Each tool's `--version` reports
+`MAJOR.MINOR.PATCH+yyMM.ddhh` and the full UTC build time; Cargo, Git tags, asset
+names and application install versions retain the stable SemVer core. Metadata
+has no SemVer precedence. No date is squeezed into Windows numeric file-version
+fields. An hour stamp may repeat, so full UTC time and commit remain available.
+Ordinary Cargo builds also embed a build timestamp; cached binaries retain the
+time they were compiled. The build script watches RUST_BUILD_TIMESTAMP, allowing
+an explicit reproducible timestamp. Publication never edits tracked version files.
+
+`publish` first checks clean tracked state and matching main CI, then calls
+update-version, format --check, clippy, build (including binary scanning), test,
+create-installer, and finally tag-release --push when explicitly requested.
+Formatting that requires changes fails; fix/commit/promote those changes first.
+The project create-installer task invokes the Rust release command to build a
+fresh matching native set, create both portable and installer deliveries, scan
+and inspect them, and exercise both using temporary installation roots. It uses
+the freshly built builder/runtime/template, never the user's active installation.
+
+Local packaging is also available independently:
+
+```powershell
+dotask create-installer
+# With Cargo alone and an explicit fresh output directory:
+cargo run --quiet --locked --package doinstall-dev -- release build --output C:/tmp/doinstall-release-review
+```
+
+The default output is a fresh directory under Cargo's external target directory,
+reported by the command. ZIP/tar.gz files are generated locally by these commands
+and by Actions; they are not checked into Git. Only the authorized version-tag
+workflow publishes GitHub Releases. Consumers download pinned release assets,
+verify SHA256SUMS, and extract them; they do not fetch repository archives or
+compile doinstall. Local Windows packaging does not produce/test Linux binaries;
+the hosted matrix rebuilds both platforms with their own UTC build times.
+
+To only tag a previously reviewed and verified main commit:
+
+```powershell
 dotask tag-release --create=false
-# After reviewing the preview, create and push the tag (starts publication):
 dotask tag-release --push
 ```
 
-The task reads and validates Cargo's version through the existing release driver;
-you supply neither a version nor a commit hash. It refuses tracked staged or
-unstaged changes, fetches `origin/main` without tags, and requires `HEAD`, local
-`main` and fetched `origin/main` to identify the same commit. You can run from
-`develop` when it matches `main`; integrate and push through the normal process
-first. Untracked files are not tagged and do not block the task. The latest
-`release.yml` push run on `main` must have completed successfully for that exact
-commit. Pending, failed, missing or mismatched CI stops before tagging.
+The tag task reads Cargo's version, fetches origin/main without tags, and requires
+HEAD, main and origin/main to be identical. The latest main push workflow must be
+completed successfully for that exact SHA. Without --push it creates only an
+annotated local tag. --create=false never tags/pushes, even with --push. Untracked
+files do not block it. Existing tags fail; no force, replacement or deletion is
+performed. Failed pushes leave the local tag for inspection. After a local-only
+tag, push it explicitly (`git push origin refs/tags/v0.1.0`, substituting version);
+rerunning tag creation refuses the existing tag. A commit hash is not needed in
+these task commands; Git's raw tag command otherwise defaults to HEAD.
 
-`--create=false` performs checks and prints the plan without creating or pushing
-a tag, even when combined with `--push`; it still fetches the remote-tracking
-branch. With no options, the task creates only an annotated local tag. `--push`
-creates the tag and pushes only its full `refs/tags/vVERSION` ref to `origin`.
-The tag targets the captured, verified commit explicitly. Git refuses an existing
-local tag; the task never forces, replaces, deletes, switches branches or bumps
-versions. If pushing fails, the local tag remains for inspection. After creating
-a local-only tag, push that reviewed tag with `git push origin refs/tags/v0.1.0`
-(substitute its version); rerunning the task refuses the existing tag.
-
-The helper's Windows execution and failure paths are tested with simulated Git
-and GitHub commands, without creating real tags or publishing. These optional
-tests run when dotask is installed; CI does not install or require it. Native
-Linux execution of this maintainer helper has not been tested.
-
-Without dotask, the equivalent manual commands remain available:
+The equivalent manual tag commands remain available after reviewing main CI:
 
 ```powershell
-cd C:\Users\kodyb\Projects\doinstall
-git status --short
-python -B scripts/release.py version --tag v0.1.0
+cargo run --quiet --locked --package doinstall-dev -- release version --tag v0.1.0
 git tag -a v0.1.0 main -m 'doinstall v0.1.0'
 git push origin refs/tags/v0.1.0
-gh run list --workflow release.yml --repo kodybrown/doinstall
 ```
 
-Tag the reviewed, clean commit on `main` that was rehearsed, with no intervening changes.
-Git permits omitting the commit argument and then defaults to `HEAD`; explicitly
-selecting `main` (or using the task) avoids tagging a different checkout commit.
-The tag push reruns every gate and publishes only if they all pass. GitHub Actions
-and repository policy must permit the publishing job's contents write permission.
-Do not create a separate release manually before the job, because existing
-releases are deliberately refused.
+The tag push reruns all hosted gates. Do not create a separate GitHub release
+manually first: the publisher refuses existing releases. Publishing requires the
+workflow's contents write permission and explicit maintainer authorization.
 
 ## Local verification and acceptance
 
 Developer prerequisites: the pinned Rust toolchain (rustup bootstraps it), a native
-linker, Git, and Python 3.10+. Consumer bundles need none of these build tools.
+linker and Git. Consumer bundles need none of these build tools.
 All release output paths must be fresh and outside the checkout. Cargo's evaluated
 `target_directory` and `build_directory` must also stay external; the existing
 project output policy is preserved.
@@ -287,8 +331,7 @@ project output policy is preserved.
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
 .\build.cmd verify
-python -B -m unittest discover -s scripts -p 'test_*.py'
-python -B scripts/release.py build --output C:/tmp/doinstall-release-windows-review
+cargo run --quiet --locked --package doinstall-dev -- release build --output C:/tmp/doinstall-release-windows-review
 git diff --check
 ```
 
@@ -296,17 +339,22 @@ On native Ubuntu 22.04 x64:
 
 ```bash
 ./build.sh verify
-python3 -B -m unittest discover -s scripts -p 'test_*.py'
-python3 -B scripts/release.py build --output /tmp/doinstall-release-linux-review
+cargo run --quiet --locked --package doinstall-dev -- release build --output /tmp/doinstall-release-linux-review
 git diff --check
 ```
 
-The release driver stages tools with the existing build helper and calls
-`package --distribution-dir DIR --result-file FILE`. The distribution directory
-supplies reviewed README, release metadata and dependency notices; its four tools
-must byte-match the fresh build. `package` returns the builder's actual `FilePath`
-in the report outside installer output. Ordinary `build package` behavior remains
-available without distribution metadata.
+Verification includes the Rust release helper's tests. For a focused helper run,
+use `cargo test --package doinstall-dev --locked`. When dotask is installed, an
+additional disposable-project test exercises the shared tasks and publish hooks
+with fake Git/GitHub commands. Without dotask that optional check is skipped;
+ordinary Cargo verification and native release acceptance remain available.
+
+The Rust release command stages one matching native build and passes the reviewed
+README, metadata and dependency notices to the existing installer assembly
+routine. It verifies that all four staged tools byte-match that payload. Assembly
+invokes the real builder with a result file and consumes its actual `FilePath`;
+it never guesses a delivery filename or uses the active installation. Ordinary
+`build package` behavior remains available without distribution metadata.
 
 Acceptance installs doinstall and an example application only under disposable
 install/bin/source roots, explicitly sets `add-to-path=false`, enables no desktop
