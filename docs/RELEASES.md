@@ -200,11 +200,24 @@ gh run download RUN_ID --name release-ready --dir C:/tmp/doinstall-release-revie
 
 ## Local tasks and maintainer procedure
 
-Optional reusable sources live in [.tasks/_/rust](../.tasks/_/rust/README.md).
-Users call thin project tasks; shared sources remain product-independent for
-future promotion to dotask's catalog. Installed dotask and Rust are conveniences
+Optional managed task copies live in [.tasks/_/rust](../.tasks/_/rust/README.md).
+Canonical sources are published in
+[dotask's Rust catalog](https://github.com/kodybrown/dotask/tree/main/shared-tasks/rust).
+Users call thin project tasks; shared sources remain product-independent.
+Installed dotask and Rust are conveniences
 for this local flow. CI and release assembly bootstrap through Cargo without
 installed dotask, Python, .NET or consumer checkouts.
+
+Management created the minimal `.dotasks.yaml` project configuration and
+`.dotasks-lock.yaml` ownership record; commit both with the installed copies.
+The committed tasks run without catalog access.
+To install into another initialized project, use `dotask --save rust` and
+`dotask --add rust` without `--lang rust` (the public operations are YAML tasks
+with Rust helpers). To update this project, run `dotask --sync --dry-run`, review,
+then `dotask --sync`, test and commit the copies and tracking together. Do not
+edit or format `.tasks/_/rust/` here; fix the originals in dotask, regenerate and
+publish its catalog, then sync. Existing handwritten copies must be backed up
+and moved aside before `--add`; it never adopts or overwrites untracked files.
 
 1. Develop on develop, using `dotask build` and `dotask run`.
 2. Occasionally run `dotask create-doinstall-installer` and explicitly launch its
@@ -308,10 +321,11 @@ git diff --check
 ```
 
 Verification includes the Rust release helper's tests. For a focused helper run,
-use `cargo test --package doinstall-dev --locked`. When dotask is installed, an
-additional disposable-project test exercises shared build/run/test/version tasks.
-Publisher shell tests use a fake gh and never access real tags/releases. Without dotask that optional check is skipped;
-ordinary Cargo verification and native release acceptance remain available.
+use `cargo test --package doinstall-dev --locked`. Generic shared-task tests now
+belong to dotask: its checkout CLI installs from the catalog into a disposable
+project and exercises build/run/test/version tasks without an installed dotask.
+Publisher shell tests use a fake gh and never access real tags/releases.
+Ordinary Cargo verification and native release acceptance remain independent.
 
 The Rust release command stages one matching native build and passes the reviewed
 README, metadata and dependency notices to the existing installer assembly

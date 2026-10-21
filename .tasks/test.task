@@ -2,7 +2,6 @@ description: Build, run all tests, verify shim integrity and check whitespace wi
 requires: [{kind: task, value: _/rust/test}, {kind: tool, value: cargo}, {kind: tool, value: git}]
 steps:
   - run: _/rust/test
-    with: {format-tasks: true}
   - exec:
       executable: cargo
       arguments: [run, --quiet, --locked, --package, doinstall-dev, --, shim, --verify]

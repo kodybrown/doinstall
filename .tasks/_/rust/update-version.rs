@@ -7,7 +7,7 @@
 //   - {name: increment-minor, type: bool, default: false}
 //   - {name: increment-major, type: bool, default: false}
 //   - {name: dry-run, type: bool, default: false}
-// requires: [{kind: tool, value: cargo}, {kind: file, value: _/rust/_support/Rust.rs}]
+// requires: [{kind: tool, value: cargo}, {kind: file, value: rust/_support/Rust.rs}, {kind: file, value: rust/README.md}]
 // end-dotask
 #[path = "_support/Rust.rs"]
 mod rust;

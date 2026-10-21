@@ -112,10 +112,10 @@ fn target(p: &BuildContext, data: &Value) -> Result<PathBuf> {
   if path.starts_with(fs::canonicalize(p.root())?) {
     bail!("Cargo target_directory must be outside source");
   }
-  if let Some(build) = data["build_directory"].as_str() {
-    if std::path::absolute(build)?.starts_with(std::path::absolute(p.root())?) {
-      bail!("Cargo build_directory must be outside source");
-    }
+  if let Some(build) = data["build_directory"].as_str()
+    && std::path::absolute(build)?.starts_with(std::path::absolute(p.root())?)
+  {
+    bail!("Cargo build_directory must be outside source");
   }
   Ok(path)
 }
@@ -443,18 +443,16 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       let mut binaries = BTreeMap::new();
       for line in output.lines() {
         if let Ok(record) = serde_json::from_str::<Value>(line) {
-          if record["reason"] == "compiler-artifact" {
-            if let Some(path) = record["executable"].as_str() {
-              if record["target"]["kind"]
-                .as_array()
-                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
-              {
-                binaries.insert(
-                  record["target"]["name"].as_str().context("Missing binary name")?.to_owned(),
-                  path.to_owned(),
-                );
-              }
-            }
+          if record["reason"] == "compiler-artifact"
+            && let Some(path) = record["executable"].as_str()
+            && record["target"]["kind"]
+              .as_array()
+              .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+          {
+            binaries.insert(
+              record["target"]["name"].as_str().context("Missing binary name")?.to_owned(),
+              path.to_owned(),
+            );
           }
           if let Some(message) = record["message"]["rendered"].as_str() {
             eprint!("{message}");

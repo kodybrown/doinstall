@@ -5,9 +5,9 @@ options:
   - {name: profile, default: release}
   - {name: format-tasks, type: bool, default: false}
 requires:
-  - {kind: task, value: _/rust/format}
-  - {kind: task, value: _/rust/clippy}
-  - {kind: task, value: _/rust/cargo.rs}
+  - {kind: task, value: rust/format}
+  - {kind: task, value: rust/clippy}
+  - {kind: task, value: rust/cargo.rs}
 steps:
   - run: _/rust/format
     with:

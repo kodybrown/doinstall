@@ -1,10 +1,30 @@
 # Reusable Rust tasks
 
-These handwritten sources are maintained here for future promotion to dotask's
-shared catalog. They are not installed catalog copies: no lockfile or ownership
-claim is fabricated. Copy this whole directory, including `_support/Rust.rs`,
-beneath a project's `.tasks/_/rust/`. Keep thin project entry points at task root;
-users should not need to call shared paths directly.
+Canonical sources live in dotask's `shared-tasks/rust/` catalog. Install them
+from a consuming project's root with normal dotask management commands:
+
+```sh
+dotask --save rust
+dotask --add rust
+dotask --sync --dry-run
+```
+
+Use the whole group without `--lang rust`: the public operations are YAML tasks
+and their helpers are Rust. Dependencies include `_support/Rust.rs` and this
+README. Commit the installed `.tasks/_/rust/` files and `.dotasks-lock.yaml`.
+Keep thin project entry points at task root; users need not call shared paths
+directly. For example, `.tasks/build.task` can contain:
+
+```yaml
+requires: [{kind: task, value: _/rust/build}]
+steps: [{run: _/rust/build}]
+```
+
+Review updates with `dotask --sync --dry-run`, then `dotask --sync`. Edit these
+sources in dotask, regenerate its catalog, and publish `main` before syncing
+consumers. Installed copies are managed files; local edits stop sync rather
+than being overwritten. Existing handwritten copies must first be backed up
+and moved aside explicitly; `--add` never adopts untracked files.
 
 No reusable source hardcodes a product, repository, SDK path, or sibling checkout.
 Rust task compilation uses the SDK bundled with installed dotask. Cargo-only
@@ -27,8 +47,9 @@ release); test uses release. A virtual workspace requires an explicit package
 for building or versioning. Generic tests default to all workspace packages.
 
 Formatting may modify Cargo source. Shared task sources are excluded by default
-so consumer projects do not rewrite catalog-owned files. This repository's
-wrappers pass `--format-tasks=true` because it owns these originals.
+so consumer projects do not rewrite catalog-owned files. Leave `format-tasks`
+false in consumer wrappers; only source authors should opt in while maintaining
+the originals. Cargo formatting still formats ordinary project Rust sources.
 
 Run accepts `--bin` (otherwise Cargo default-run or the only compiled binary)
 and `--args`, a JSON array of literal strings. For example, a project wrapper
@@ -75,5 +96,8 @@ They never run the installer against an active installation automatically.
 
 Native CI matrices, compatibility baselines and release permissions remain
 project policy. Pattern scans complement closed inventories and archive checks;
-they do not recognize every possible secret. Declare source companions in
-`requires` metadata before promoting these files to the shared catalog.
+they do not recognize every possible secret. The low-level `cargo.rs` helper is
+also cataloged so dependency installation and support-file ownership are explicit.
+Source requirements are catalog-relative (`rust/...`); runtime task calls use
+the installed source prefix (`_/rust/...`). Rust 1.95+, Cargo, rustfmt, Clippy
+and a native linker are required. No .NET SDK or Python is needed for this group.

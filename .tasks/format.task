@@ -6,4 +6,3 @@ steps:
   - run: _/rust/format
     with:
       check: {parameter: check}
-      format-tasks: true

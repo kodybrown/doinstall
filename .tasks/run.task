@@ -7,4 +7,3 @@ steps:
     with:
       bin: doinstall
       args: {parameter: args}
-      format-tasks: true

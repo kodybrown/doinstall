@@ -17,7 +17,8 @@ tool layout, compatibility limits, and the release procedure.
 Keep the matching builder, runtime, and launcher template together; consumers
 need no Rust SDK or doinstall source checkout.
 
-Optional Rust tasks live under [.tasks/_/rust](.tasks/_/rust/README.md), with thin
+Optional Rust tasks are installed from dotask's published catalog under
+[.tasks/_/rust](.tasks/_/rust/README.md), with thin
 project entry points: `dotask build`, `dotask run`, `dotask test`,
 `dotask update-version`, and `dotask create-doinstall-installer`.
 Build formats, lints, compiles and scans the tools without changing the package
@@ -25,6 +26,8 @@ version. Run/test build first. After testing, explicitly increment the version,
 review/commit, fast-forward main and push it; Actions verifies and publishes that
 version. There is no local publish or manual tagging step. See the
 [release procedure](docs/RELEASES.md#local-tasks-and-maintainer-procedure).
+Update these managed copies with `dotask --sync --dry-run`, then `dotask --sync`;
+commit their tracking and files together. Project wrappers remain local.
 
 Build doinstall's own self-extracting installer from this source checkout:
 

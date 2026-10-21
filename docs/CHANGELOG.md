@@ -725,3 +725,23 @@
   22.04 in Docker; Actionlint 1.7.11 passed. Cargo target/build directories remain
   external at C:/tmp/_rust/doinstall/target. Keep version 0.1.1 unchanged. No
   real tags, pushes, releases, active installations or persistent PATH changes.
+
+### 2026-10-20 Consume the published shared Rust task catalog
+
+- Replace the handwritten Rust task copies with official managed copies
+  downloaded from dotask's published shared-tasks/rust catalog using normal
+  save/add commands. Commit generated project configuration and ownership/hash
+  tracking; keep project entry points and installer/release policy local.
+- Stop project formatting and CI from rewriting or formatting upstream-owned
+  task sources. Document canonical maintenance in dotask and ordinary sync here.
+  Move generic task acceptance into dotask's checkout-CLI/catalog tests, preserving
+  Cargo-only doinstall development and CI without an installed task runner.
+- Verification on Windows x64: build.cmd verify passed 153 Rust tests, formatting,
+  strict Clippy, shim integrity and whitespace checks. The installed dotask test
+  task passed the same product tests; run --args '["--version"]' executed the
+  scanned binary and update-version --dry-run preserved both version files.
+  All four executables passed private-content checks. Managed task bytes remain
+  identical to the published sources, and sync reports no changes. Actionlint
+  1.7.11 passed the release workflow. Cargo target/build outputs remain external
+  at C:/tmp/_rust/doinstall/target. Preserve package version 0.1.1 and active
+  installations/PATH. Native Linux/macOS/ARM64 task acceptance is not claimed.

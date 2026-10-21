@@ -52,7 +52,6 @@ jobs:
         run: rustup show active-toolchain
       - name: Verify standalone project
         run: |
-          rustfmt --check --edition 2024 .tasks/_/rust/*.rs
           if [[ "$RUNNER_OS" == Windows ]]; then
             MSYS_NO_PATHCONV=1 cmd.exe /d /c build.cmd verify
           else
