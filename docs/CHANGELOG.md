@@ -707,3 +707,21 @@
   with that environment retained. Cargo target/build outputs remain external at
   C:/tmp/_rust/doinstall/target. Preserve the prepared 0.1.1 version; no tags,
   pushes, releases, active installations or persistent PATH were changed.
+
+### 2026-10-20 Read publisher metadata through the shell
+
+- Have Bash open release metadata and feed JSON to jq through stdin. Native
+  Windows jq no longer receives MSYS-only filenames. Preserve all version,
+  source-commit, existing-release and draft validation and publication gates.
+- Strengthen shell acceptance with /proc/cygdrive paths for Windows assets and
+  temporary downloads, disabled MSYS conversion and paths containing spaces.
+  Set TMPDIR after shell startup so normalization cannot weaken the regression;
+  assert the existing-release case actually uses the MSYS-only download path.
+  This reproduces the failure even when local /tmp aliases happen to match.
+- Verification: the stronger test fails against the previous publisher script
+  and passes after stdin redirection. build.cmd verify passed 154 Windows Rust
+  tests, formatting, strict Clippy, shim integrity and whitespace checks. The
+  actual publisher script passed all seven fake-gh scenarios on native Ubuntu
+  22.04 in Docker; Actionlint 1.7.11 passed. Cargo target/build directories remain
+  external at C:/tmp/_rust/doinstall/target. Keep version 0.1.1 unchanged. No
+  real tags, pushes, releases, active installations or persistent PATH changes.

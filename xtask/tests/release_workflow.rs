@@ -58,7 +58,11 @@ fn publisher_creates_exact_tested_release_and_refuses_version_reuse_or_partial_d
   let script_path = work.path().join("publish.sh");
   // A shell function takes precedence over every executable on PATH, including
   // Windows/MSYS PATH conversion. Real gh can never be reached by this script.
-  fs::write(&script_path, format!("gh() {{ bash \"$TEST_GH\" \"$@\"; }}\n{script}")).unwrap();
+  fs::write(
+    &script_path,
+    format!("gh() {{ bash \"$TEST_GH\" \"$@\"; }}\nTMPDIR=\"$TEST_SHELL_TEMP\"\nexport TMPDIR\n{script}"),
+  )
+  .unwrap();
   let tools = work.path().join("tools");
   let assets = work.path().join("assets");
   let runner = work.path().join("runner");
@@ -112,12 +116,18 @@ esac
   }
   let log = work.path().join("commands.log");
   // Windows CI disables MSYS argument conversion for the outer cmd.exe call.
-  // Keep that condition in this regression. Give mktemp an owned, native path
-  // with forward slashes that both Bash and Windows jq understand without
-  // conversion; Bash's /tmp can refer to a different directory/drive entirely.
-  // On Unix this remains a normal absolute path. All shell temp files are now
-  // inside the fixture and removed by its TempDir, including on assertion failure.
-  let shell_temp = runner.to_string_lossy().replace('\\', "/");
+  // Keep that condition in this regression and force an MSYS-only path that
+  // native jq cannot open. Local /tmp junctions must not hide the CI mismatch.
+  // Set it after Bash startup, which may normalize an inherited TMPDIR. The
+  // shell owns file access; native tools must receive metadata through stdin.
+  // Everything still resides inside the fixture and is removed by TempDir.
+  let native_root = work.path().to_string_lossy().replace('\\', "/");
+  let shell_root = if cfg!(windows) {
+    let (drive, tail) = native_root.split_once(":/").expect("Windows fixture needs a drive path");
+    format!("/proc/cygdrive/{}/{tail}", drive.to_ascii_lowercase())
+  } else {
+    native_root
+  };
   for case in [
     "new",
     "existing",
@@ -139,9 +149,9 @@ esac
       .env("TEST_CASE", case)
       .env("COMMIT", &commit)
       .env("GH_REPO", "example/tool")
-      .env("ASSETS", &assets)
-      .env("RUNNER_TEMP", &runner)
-      .env("TMPDIR", &shell_temp)
+      .env("ASSETS", format!("{shell_root}/assets"))
+      .env("RUNNER_TEMP", format!("{shell_root}/runner"))
+      .env("TEST_SHELL_TEMP", format!("{shell_root}/runner"))
       .output()
       .unwrap();
     assert_eq!(
@@ -152,6 +162,12 @@ esac
       String::from_utf8_lossy(&output.stderr)
     );
     let commands = fs::read_to_string(&log).unwrap();
+    if cfg!(windows) && ["existing", "metadata-mismatch"].contains(&case) {
+      assert!(
+        commands.contains("--dir /proc/cygdrive/"),
+        "Must exercise an MSYS-only download path"
+      );
+    }
     assert_eq!(
       commands.contains("release create"),
       ["new", "upload-failure"].contains(&case),
