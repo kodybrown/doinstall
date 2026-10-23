@@ -36,7 +36,7 @@ pub(super) fn description(text: impl Into<String>) -> StyledString {
 
 pub(super) fn theme() -> Theme {
   let mut theme = Theme {
-    // Flat cell surfaces match the compact console design. The terminal owns
+    // Flat cell surfaces match the console design. The terminal owns
     // its outer window; Cursive must not add a stock frame or shadow.
     shadow: false,
     borders: BorderStyle::None,
@@ -115,8 +115,8 @@ impl Form {
   }
   pub(super) fn with_description(mut view: Dialog, description: &str) -> Self {
     let title = view.get_title().to_owned();
-    // Suppress stock title separators. Borders remain space/color surfaces,
-    // never box-drawing characters or a second set of interactive controls.
+    // Suppress stock title separators. The reserved top and side border cells
+    // are clipped below because Cursive reserves them even with borders=None.
     view.set_title("");
     view.set_padding(cursive::view::Margins::lrtb(0, 0, 0, 0));
     let content = view.set_content(DummyView);
@@ -169,15 +169,22 @@ impl ViewWrapper for Form {
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
     let hints = usize::from(self.instructions);
     let usable = available.saturating_sub((0, hints));
-    let mut size = self.view.required_size(usable);
+    let mut size = self.view.required_size(usable + (2, 1)).saturating_sub((2, 1));
     size.x = size.x.max(48).min(usable.x);
     size + (0, hints)
   }
   fn wrap_layout(&mut self, size: Vec2) {
-    self.view.layout(size.saturating_sub((0, usize::from(self.instructions))));
+    self
+      .view
+      .layout(size.saturating_sub((0, usize::from(self.instructions))) + (2, 1));
     self.refresh_buttons();
   }
-  fn wrap_on_event(&mut self, event: Event) -> EventResult {
+  fn wrap_on_event(&mut self, mut event: Event) -> EventResult {
+    // Translate pointer coordinates into the same virtual Dialog used for
+    // drawing. Offsets from parent layers and scrollers remain untouched.
+    if let Event::Mouse { position, .. } = &mut event {
+      *position = *position + (1, 1);
+    }
     // A wrapped header makes the content scrollable at narrow sizes. Keep Tab
     // between the two confirmation choices rather than focusing that scroller
     // between No and Yes. Enter must always activate the visibly focused choice.
@@ -197,9 +204,13 @@ impl ViewWrapper for Form {
     result
   }
   fn wrap_important_area(&self, size: Vec2) -> cursive::Rect {
-    self
+    let area = self
       .view
-      .important_area(size.saturating_sub((0, usize::from(self.instructions))))
+      .important_area(size.saturating_sub((0, usize::from(self.instructions))) + (2, 1));
+    cursive::Rect::from_corners(
+      area.top_left().saturating_sub((1, 1)),
+      area.bottom_right().saturating_sub((1, 1)),
+    )
   }
   fn wrap_draw(&self, printer: &Printer) {
     let size = printer.size.saturating_sub((0, usize::from(self.instructions)));
@@ -212,10 +223,9 @@ impl ViewWrapper for Form {
         p.print_hline((0, y), size.x, " ");
       }
     });
-    // The dialog reserves one border row above content and three action rows.
-    // Color them without repainting over any of the stock controls.
+    // The footer retains its three action rows. The stock top/side border
+    // cells are outside the visible viewport, leaving a single flat header.
     form.with_color(ColorStyle::new(TEXT, EDGE), |p| {
-      p.print_hline((0, 0), size.x, " ");
       for y in size.y.saturating_sub(3)..size.y {
         p.print_hline((0, y), size.x, " ");
       }
@@ -223,7 +233,9 @@ impl ViewWrapper for Form {
     let mut buttons = theme();
     buttons.palette[PaletteStyle::Primary] = ColorStyle::new(TEXT, BUTTON).into();
     buttons.palette[PaletteStyle::Highlight] = Style::from(ColorStyle::new(FIELD, TEXT)).combine(Effect::Bold);
-    self.view.draw(&form.theme(&buttons));
+    self
+      .view
+      .draw(&form.content_offset((1, 1)).inner_size(size + (2, 1)).theme(&buttons));
     if self.instructions {
       let hint = [
         "Tab: move  Space: toggle  Esc: cancel",
@@ -235,7 +247,7 @@ impl ViewWrapper for Form {
       .unwrap_or("");
       printer.with_color(ColorStyle::new(MUTED, BACKDROP), |p| {
         p.print_hline((0, size.y), size.x, " ");
-        p.print((3, size.y), hint);
+        p.print((2, size.y), hint);
       });
     }
   }

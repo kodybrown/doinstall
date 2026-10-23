@@ -73,7 +73,7 @@ impl Screen {
 struct Recording(Arc<Mutex<Screen>>);
 
 #[test]
-fn selected_compact_layout_keeps_real_controls_and_grows_for_more_text() {
+fn main_form_fills_viewport_with_top_aligned_controls_and_bottom_actions() {
   let (_temp, mut previous, _root) = fixture();
   let mut package = previous.user_data::<State>().unwrap().action.package().clone();
   package.application.name = "Weekend Designer".into();
@@ -106,12 +106,28 @@ fn selected_compact_layout_keeps_real_controls_and_grows_for_more_text() {
   runner.refresh();
   {
     let screen = screen.lock().unwrap();
-    let heading = screen.find("Weekend Designer");
+    let heading = screen.find("Weekend Designer ·");
+    assert_eq!(
+      heading,
+      Vec2::new(2, 1),
+      "One padded header row, without a reserved outer strip"
+    );
+    for x in 0..screen.size.x {
+      assert_eq!(screen.cell(Vec2::new(x, 0)).colors.back, Color::Rgb(48, 63, 82));
+    }
     assert_eq!(screen.cell(heading).colors.back, Color::Rgb(48, 63, 82));
     let field = screen.find(sample);
+    assert_eq!(field, Vec2::new(2, 6), "Controls stay directly below the header");
+    assert_eq!(
+      screen.cell(Vec2::new(screen.size.x - 3, field.y)).colors.back,
+      Color::Rgb(20, 44, 65),
+      "The editor background must span the usable width"
+    );
     assert_eq!(screen.cell(field).colors.front, Color::Rgb(119, 205, 236));
     assert_eq!(screen.cell(field).colors.back, Color::Rgb(20, 44, 65));
     let hint = screen.find("Tab: move");
+    assert_eq!(hint.y, screen.size.y - 1);
+    assert_eq!(screen.find(" Install ").y, screen.size.y - 3);
     assert!(hint.y > screen.find(" Install ").y, "Hints must be below the footer");
     assert_eq!(screen.cell(hint).colors.back, Color::Rgb(15, 21, 30));
     assert!(!screen.cells.iter().any(|cell| "▀▄┌┐└┘─│".contains(cell.text)));
@@ -123,8 +139,10 @@ fn selected_compact_layout_keeps_real_controls_and_grows_for_more_text() {
   assert_eq!(form_values(&mut runner)["install-dir"], sample);
   {
     let screen = screen.lock().unwrap();
-    screen.find(" Install ");
-    screen.find("Tab: move");
+    assert_eq!(screen.find("Weekend Designer ·"), Vec2::new(2, 1));
+    assert_eq!(screen.find(sample), Vec2::new(2, 6));
+    assert_eq!(screen.find(" Install ").y, screen.size.y - 3);
+    assert_eq!(screen.find("Tab: move").y, screen.size.y - 1);
     screen.snapshot("selected-layout-80x24");
   }
   let make_form = |description: &str| {

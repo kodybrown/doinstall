@@ -788,3 +788,21 @@
   actual Cursive cells at 80x24 and 100x32, not a claim of graphical terminal-host
   acceptance for native icons/font or macOS. Cargo outputs remain external and
   isolated per checkout; package version, active installations and PATH unchanged.
+
+### 2026-10-23 Fill the console viewport and remove the extra header strip
+
+- Stretch choices, progress and summary to the terminal viewport. Keep controls
+  aligned at the top, editors across the usable width, actions at the bottom and
+  choices keyboard hints on the final row. Keep confirmation and validation
+  overlays compact, with wrapping, scrolling and minimum-size notices intact.
+- Clip Cursive's reserved top/side border cells, translating layout, drawing,
+  mouse coordinates and focus rectangles together. Remove the separate strip
+  above the header and align captions, editors and keyboard hints consistently.
+- Update the layout contract, decision notes and rendered QA evidence. Assert
+  viewport/header/editor/footer geometry at 80x24 and 100x32 with User-only sample
+  paths; retain real keyboard, mouse, Unicode, cancellation and resize coverage.
+- Verification: build.cmd verify passed 158 Windows workspace tests, formatting,
+  strict Clippy, shim integrity and whitespace checks. Native Debian WSL passed
+  42 installer unit tests, seven terminal protocol scenarios in one PTY acceptance
+  test, and all-target strict Clippy. Inspect actual Cursive-cell previews at
+  80x24 and 100x32; native graphical-host acceptance remains separate.

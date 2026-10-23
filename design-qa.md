@@ -1,72 +1,60 @@
 # Console presentation design QA
 
-Date: 2026-10-23. Scope: the production Rust/Cursive console interface, not a web prototype.
+Date: 2026-10-23. Scope: the production Rust/Cursive console interface.
 
-## Source and implementation evidence
+## Visual reference and evidence
 
-- Source visual truth: the third displayed concept selected by the user, with
-  the requested User-only path correction, saved as
-  `artifacts/console-presentation/selected-reference.png` (1586x992 pixels).
-- Implementation: real Cursive backend cells/colors at 80x24, rendered with a
-  10x22 pixel cell into `artifacts/console-presentation/selected-layout-80x24.png`
-  (800x528), and 100x32 into `selected-layout-100x32.png` (1000x704).
-- Full-view comparison: `artifacts/console-presentation/comparison.png` puts both
-  artifacts together. The illustrative reference OS title bar is excluded; the
-  remaining source region is uniformly scaled to 800 pixels wide and letterboxed.
-  Implementation cells retain their recorded resolution. No browser/CSS viewport
-  or deviceScaleFactor applies to this native terminal interface.
-- State: choices with the installation-path field focused. Sample paths are
-  `C:\Users\User\Apps\WeekendDesigner`. Captures show actual field/control state;
-  they are not native OS-window screenshots and do not prove icon/font support.
-- Artifacts are local ignored review output and are not installer payload assets.
+The third displayed concept remains the styling reference. The user's subsequent
+two screenshots refine sizing: remove the extra strip above the dialog title,
+fill the terminal viewport, align controls at the top, stretch editors across the
+usable width, and keep actions at the bottom. This supersedes the earlier
+content-height main dialog requirement. Confirmation and validation overlays
+remain compact.
+
+Actual Cursive backend cells/colors were captured at 80x24 and 100x32, including
+bold effects, then rendered with 10x22 pixel cells into local ignored artifacts:
+
+- `artifacts/console-presentation/selected-layout-80x24.png` (800x528).
+- `artifacts/console-presentation/selected-layout-100x32.png` (1000x704).
+
+Both captures use `C:\Users\User\Apps\WeekendDesigner` and actual controls with
+the installation-path editor focused. They are code-rendered character cells,
+not native OS-window screenshots. The earlier `comparison.png` and
+`selected-reference.png` document the original concept only; they are superseded
+for main-screen sizing by this screenshot review.
 
 ## Comparison and findings
 
-No actionable P0/P1/P2 differences remain within the approved console scope.
-The header/subtitle hierarchy, navy/slate surfaces, dark cyan-text field focus,
-filled primary action, secondary action and separate backdrop hints match the
-selected direction using terminal cells. Captions and controls remain aligned.
+The rendered views were inspected against the supplied mockup. A single flat
+header spans the viewport; its one padded row is continuous, with no reserved
+border strip or indented header edge. Title and body controls share the same
+horizontal inset. The focused editor's background fills the usable width.
+Controls stay near the top, the body takes remaining height, and actions and
+keyboard hints remain anchored at the bottom. Existing slate/navy colors, cyan
+primary action and field focus are retained.
 
-The user explicitly retained current sizing behavior. Accordingly, the form
-continues filling the terminal's usable width and grows vertically with content,
-rather than imposing the generated illustration's fixed-looking panel ratio.
-The real fixture retains current version metadata, package-driven permissions,
-wording and dependent command/PATH fields; the illustration's different option
-inventory is not treated as a configuration change. Flat fills replace generated
-gradients, and graphical OS chrome remains owned by the terminal host.
+No actionable visual discrepancy remains within this console layout scope.
+Package-defined labels, versions and controls remain authoritative. Font metrics
+and graphical terminal chrome are host-owned. Flat cell fills replace gradients.
 
-Focused header/field/footer regions were inspected in the combined full-view
-image; separate region crops were unnecessary for this small interface. Production
-bold effects are also recorded by the backend capture for the final previews.
+## Interaction and verification
 
-## Interaction and responsive verification
-
-- Real controls preserve click targets, Tab/Shift+Tab, checkbox continuation-row
-  focus/clicks, disabled-field skipping, Unicode editing and cursor preservation.
-- At 80x24 actions/hints remain visible; larger descriptions increase required
-  dialog height. Small-terminal notices retain values and do not start install.
-- Cancellation stays No by default. A test caught an extra scroll-focus stop in
-  narrow confirmation dialogs; cycling the two choices and consuming the focus
-  event fixed it. Windows and Linux regressions then passed.
-- Windows full verification passed 158 tests. Linux passed 42 installer units,
-  seven PTY scenarios in one acceptance test, repeated PTY stability checks and
-  strict Clippy. Validation/unattended streams remain plain and presentation
-  preferences do not become installation values or receipt settings.
+- Main-screen geometry is asserted at both 100x32 and 80x24, including header
+  position/edge colors, editor width, bottom actions and last-row hints.
+- Removing Cursive's reserved top/side border cells translates drawing, layout,
+  pointer events and focus rectangles together. Existing real mouse-hit, keyboard,
+  checkbox wrapping, Unicode editing and cursor-preservation tests pass.
+- Compact confirmation retains No as its default and working Yes hit targets.
+  Minimum-size notices, validation, scrolling, and cancellation remain covered.
+- Windows `build.cmd verify` passes 158 workspace tests, formatting, strict Clippy,
+  shim integrity and whitespace checks. Native Debian WSL passes 42 installer
+  unit tests, seven terminal protocol scenarios in one PTY acceptance test, and
+  all-target strict Clippy. Cargo outputs remain external and checkout-specific.
 
 ## Acceptance limits
 
-Physical classic Console Host icon/font behavior, native Windows Terminal and
-iTerm2 chrome, and native macOS execution require host-specific acceptance.
-PTY emulation verifies emitted protocols and fallback behavior, not that every
-graphical host honors them. No universal icon/font/resize claim is made.
-
-## Review history
-
-The main visual comparison found no implementation P0/P1/P2 issue. Differences
-in terminal aspect, option inventory and rasterized gradients were classified
-against the user's explicit terminal/sizing/configuration constraints, not fixed
-by changing installation behavior. Functional focus regressions were resolved
-before the final rendered evidence. The preview recorder was extended to retain
-the real bold effects rather than infer heading weight from colors.
+These captures establish rendered console layout, not physical host acceptance
+for classic Windows icon/font APIs, Windows Terminal/iTerm2 chrome, or native
+macOS execution. No terminal capability behavior changed in this follow-up.
 
 final result: passed

@@ -215,10 +215,12 @@ presentation metadata: stable sorting groups related controls without changing
 resolution or plain-mode prompt order. Both additions omit unused defaults when
 serialized to preserve package content identity.
 
-The selected compact presentation uses flat navy/slate character-cell surfaces,
+The selected presentation uses flat navy/slate character-cell surfaces,
 a darker focused editor with cyan text, a filled cyan primary action, a distinct
 white keyboard focus, and no drawn borders or shadows. Cursive's Dialog still
-owns button geometry, focus and mouse hit testing. Header and body share a
+owns button geometry, focus and mouse hit testing. Its reserved top and side
+border cells are clipped, with layout, pointer coordinates and focus rectangles
+translated together, avoiding a redundant strip above the header. Header and body share a
 scroller so long titles, descriptions and options cannot displace the action
 buttons. The subtitle retains application description/copyright metadata; body
 captions and explanations are muted. Checkbox continuation lines remain part of
@@ -232,8 +234,10 @@ when the header needs scrolling in a terminal below the main form's minimum size
 
 TextArea retains soft wrapping and Unicode cursor editing for single values.
 Editors refuse typed newlines, preserve Tab navigation and scroll after four
-rows. Main forms retain their minimum-size notice and grow with content and the
-available terminal width; values/cursors survive resize. Progress remains phase
+rows. Main forms fill the viewport, keeping controls top-aligned, editors stretched
+across the usable width and actions at the bottom. Confirmation and validation
+overlays remain compact. Minimum-size notices remain; values/cursors survive
+resize. Progress remains phase
 text, without a spinner, bar or percentage. Existing input grouping, YAML prompts,
 CLI locks, ownership and cancellation boundaries are unchanged.
 

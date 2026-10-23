@@ -480,15 +480,17 @@ every platform, and Tab/Shift+Tab cycles its two choices even at narrow sizes.
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
 retaining their values. Invalid inputs keep the choices screen open with a
-validation diagnostic. The dialog grows horizontally with the console, leaving
-a small outer margin; text fields use the additional width. Long input values
-soft-wrap without inserting newlines into their stored values. Editors grow to
+validation diagnostic. Choices, progress and summary fill the terminal viewport.
+Controls align at the top with consistent horizontal padding; text fields stretch
+across the usable width. Actions stay at the bottom, with choices hints on the
+last terminal row. Confirmation and validation dialogs remain compact overlays.
+Long input values soft-wrap without inserting newlines into their stored values.
+Editors grow to
 at most four rows, then scroll to keep the cursor visible. Enter does not add a
 newline; Tab/Shift+Tab continues navigating controls. Unicode content and cursor
-positions survive resizing. Height follows the
-content up to the available space. Configuration and result bodies scroll when
-space is limited. Below the minimum usable area (approximately 50 columns by 14 rows,
-including dialog margins), a resize message replaces the view without losing
+positions survive resizing. Configuration and result bodies scroll when
+space is limited. When the viewport is too small, a resize message recommends
+at least 50 columns by 14 rows and replaces the view without losing
 field values. The notice uses explicit contrasting text on the backdrop, including
 when only the width or only the height is too small. Resizing during work does
 not suspend filesystem operations.

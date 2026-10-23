@@ -75,12 +75,20 @@ struct State {
 struct SizedDialog {
   view: BoxedView,
   fits: bool,
+  compact: bool,
 }
 impl SizedDialog {
   fn new(view: impl View) -> Self {
     Self {
       view: BoxedView::new(Box::new(view)),
       fits: true,
+      compact: false,
+    }
+  }
+  fn compact(view: impl View) -> Self {
+    Self {
+      compact: true,
+      ..Self::new(view)
     }
   }
 }
@@ -89,12 +97,14 @@ impl ViewWrapper for SizedDialog {
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
     self.fits = available.x >= 48 && available.y >= 12;
     if self.fits {
-      // Fill the usable width so wrapped text fields grow on maximize. Keep
-      // a small outer margin and use only the height the content needs; tall
-      // forms may expand while short progress/summary dialogs remain compact.
-      let usable = Vec2::new(available.x.saturating_sub(4).max(48), available.y.saturating_sub(2).max(12));
-      let content = self.view.required_size(usable);
-      Vec2::new(usable.x, content.y.min(usable.y))
+      // Main screens occupy the viewport so controls stay at the top and the
+      // actions stay at the bottom. Validation remains a compact modal overlay.
+      let content = self.view.required_size(available);
+      if self.compact {
+        Vec2::min(content, available)
+      } else {
+        available
+      }
     } else {
       available
     }
@@ -539,7 +549,7 @@ fn start(siv: &mut Cursive) {
     if let Err(error) =
       config::resolve(action.package(), &options).and_then(|values| config::path(&values, "install-dir").map(|_| ()))
     {
-      siv.screen_mut().add_layer(Transparent(SizedDialog::new(Form::popup(
+      siv.screen_mut().add_layer(Transparent(SizedDialog::compact(Form::popup(
         Dialog::around(
           TextView::new(StyledString::styled(
             format!("Check installation settings:\n{error:#}"),

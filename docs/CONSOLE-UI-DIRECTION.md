@@ -41,6 +41,13 @@ Visual concepts shown with this discussion are illustrative layout proposals, no
 
 ## Host detection and behavior proposal
 
+The subsequent screenshot review refined the sizing choice: main choices,
+progress and summary screens fill the console viewport, with controls at the top,
+full-width editors inside consistent padding, and actions at the bottom.
+Confirmation and validation overlays stay compact. The extra reserved border row
+above the header is removed. This supersedes the earlier content-height main
+dialog behavior; wrapping, scrolling, resize notices and stored values remain.
+
 Detect terminal capabilities, not just the shell name. PowerShell, CMD, Bash, and zsh can run inside many terminal hosts. Environment hints such as WT_SESSION, TERM_PROGRAM and TERM, terminal status, native window information, and bounded capability checks can inform a small supported-host list. Hints may be inherited or obscured by SSH, tmux, screen, and IDE terminals; TERM=xterm-256color is not proof of xterm.
 
 Apply supported temporary presentation changes early, before drawing the form. They need not all be supplied as shell command-line arguments. Skip unknown or unavailable capabilities without failing installation. Do not assume API success proves a visible terminal changed; validate native behavior per host. Persistent terminal preferences and profiles remain user-owned.

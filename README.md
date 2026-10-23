@@ -107,9 +107,11 @@ text-only progress, and wrapped summaries occupy separate screens. Cancel/Escape
 the internal theme; colors and layout are not package settings.
 Try the [temporary Windows UI preview](examples/hello/README.md#interactive-windows-preview).
 
-The compact form uses flat header/footer surfaces, cyan field focus and a filled
-primary action, with keyboard hints below the dialog. Its minimum-size behavior,
-content growth, wrapping and scrolling remain intact. Interactive dialogs also
+The main form fills the terminal viewport with flat header/footer surfaces, cyan
+field focus and a filled primary action. Controls align at the top, editors use
+the available width, and actions stay at the bottom above the keyboard hints.
+Confirmation and validation popups remain compact. Minimum-size notices,
+wrapping and scrolling remain intact. Interactive dialogs also
 attempt temporary host title/icon/size changes, with opt-in classic Windows font
 height. Unsupported operations are skipped. See [terminal presentation options](docs/INSTALLATION.md#optional-terminal-window-presentation).
 
