@@ -458,24 +458,24 @@ The separate `confirm-cancel` runtime policy described below remains supported.
 Default theme selection and omitted group indices are omitted from serialized
 packages, so unused presentation metadata does not change package snapshots.
 
-The default theme uses a dark backdrop, contrasting form surface, colored space
-cells for the side edges, half-block title caps, and a one-column/half-row offset
-shadow. Popup text has one blank surface row above and below it. Headers, footers, normal/focused buttons,
-fields, warnings, errors, and cancellation/validation dialogs share that theme.
-Buttons use padded labels without angle brackets. Focused checkboxes highlight
-the complete row without a marker or indentation; clicking the row toggles the checkbox.
-Enabled checkbox labels are white, with a darker focused row for contrast.
-Long checkbox labels and choice options wrap within the form; continuation rows
-retain the same focus colors and mouse target. Choices remain single values,
-with arrow keys navigating options rather than individual wrapped lines.
-Descriptions, PATH explanations, and field captions use subdued gray; disabled
-controls remain muted. The built-in installation caption is `Install to:`;
-application-defined prompts and plain-mode wording remain authoritative.
-Choices show `Tab:move  Space:toggle Esc:cancel` on the button row; narrower
-terminals use shorter hints on that same row without covering the buttons.
-Tab/Shift+Tab navigation remains available even when the compact hint omits it.
-Windows places affirmative buttons first (Install/Cancel or Yes/No); Linux/macOS
-places the negative button first (Cancel/Install or No/Yes).
+The default theme uses a dark navy backdrop, flat slate header/footer, a darker
+editor with cyan text when focused, a filled cyan primary action and a distinct
+white focused button. There are no box-drawing borders or half-block shadows.
+Header and body share a scroller so long metadata stays readable while actions
+remain available. Dialog height still follows content and width follows the
+available terminal with its existing margins and minimum-size notice.
+
+Buttons use padded labels without angle brackets. Checkbox focus covers the
+whole row, including wrapped continuation lines; clicking the row toggles it.
+Enabled labels remain white and disabled controls are muted. Captions, package
+description/copyright and PATH explanations use subdued gray. Group indices
+retain their ordering and blank spacing, without generated headings. The built-in
+caption is `Install to:`; application-defined prompts remain authoritative.
+
+Choices show `Tab: move  Space: toggle  Esc: cancel` on a separate backdrop row
+below the footer, shortening the hints when needed. Windows places affirmative
+buttons first; Linux/macOS places negative buttons first. Confirm focuses No on
+every platform, and Tab/Shift+Tab cycles its two choices even at narrow sizes.
 
 Tab/Shift+Tab moves between enabled controls; Space toggles checkboxes. CLI inputs
 are shown read-only. Dependent fields are disabled until their option is enabled,
@@ -751,3 +751,61 @@ Use a fresh installation root and unused command destinations, or manually remov
 the previous installation and its launchers before using those locations again.
 The new installer does not uninstall installations created by the previous engine.
 There is no Windows Installed Apps registration or Inno Setup dependency.
+
+## Optional terminal window presentation
+
+Interactive Cursive install/uninstall dialogs attempt to set the host title to
+`<application name> Setup` or `<application name> Uninstall`. These changes happen
+after startup; no PowerShell, CMD, Bash or zsh wrapper is required. Terminal host
+capabilities determine support, not the shell executable's name.
+
+Runtime options (also forwarded by a self-extracting launcher):
+
+| Option | Meaning |
+| --- | --- |
+| `--terminal-title TEXT` | Override the session title; control characters are removed and length is bounded. |
+| `--terminal-icon FILE` | Request the first icon from an `.ico`, `.exe` or `.dll` for a classic Windows console. Relative paths use the current directory; unavailable resources are skipped. |
+| `--terminal-size COLSxROWS` | Preferred minimum viewport, 50..500 columns by 14..200 rows. Never shrink a larger viewport; default preference is 80x24. |
+| `--terminal-font-size PIXELS` | Opt-in classic Windows console font height, 6..72 pixels, retaining the current font family. Other hosts skip this option. |
+| `--no-terminal-customization` | Keep the host's title, icon, dimensions and font unchanged. |
+
+These preferences do not change installer inputs, YAML, settings files, package
+identity or receipts. The console remains resizable and the person using it
+controls its layout; a preferred viewport is not a fixed dialog size. Unsupported
+operations are skipped silently and never prevent installation. Plain prompts,
+unattended runs, package validation and redirected output emit no presentation
+commands. No terminal is launched and no persistent profile/preferences are edited.
+
+On Windows, title APIs can operate through ConPTY, though a host may suppress app
+titles. Icon/font/viewport APIs are attempted only for a confirmed visible classic
+Console Host window. Automatic 80x24 minimum sizing requires a dedicated console;
+an explicit size preference also permits grow-only sizing in a reused console.
+Icon selection is the explicit option, then an available declared shortcut icon
+in a directory payload, then the installer's own executable resource. ZIP payload
+icons unavailable before installation are skipped. This changes a console-window
+icon, not the downloaded EXE's resources or a Windows Terminal profile/tab icon.
+Windows Terminal retains host-controlled icon/font settings; recent versions can
+accept live resize requests. IDE terminals retain host-controlled geometry.
+
+Recognized VT terminals on Linux/macOS and Windows receive title requests.
+Identified local Windows Terminal, iTerm2 and genuine xterm (XTERM_VERSION as well
+as TERM) also receive grow-only viewport requests. Older versions or host policy
+may ignore those requests; other terminals keep their current size. iTerm2
+and xterm use the title stack for best-effort restoration. Local window operations
+are skipped under SSH, tmux and screen; title requests may still pass through.
+Unknown hosts receive no customization. TERM=xterm-256color alone never authorizes
+window resizing, and inherited environment hints are not proof of visible support.
+
+Captured classic-console state is restored where supported when the dialog
+finishes; geometry/font/title/icon changes made manually during the session are
+preserved where detectable. VT viewport size is restored only if it still matches the
+requested size. Generic VT title restoration depends on the host/shell. No native
+macOS, xterm, iTerm2 or Windows Terminal acceptance is implied by unit/render tests.
+
+Example using an already assembled package in a supported classic Windows host:
+
+```powershell
+.\example-setup-v1.0.exe --terminal-size 100x30 --terminal-font-size 20
+```
+
+Resize protocol references: [Windows Terminal XTWINOPS support](https://github.com/microsoft/terminal/discussions/18593) and [iTerm2 session resize policy](https://iterm2.com/documentation/2.1/documentation-preferences.html).

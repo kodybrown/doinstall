@@ -1,6 +1,6 @@
 # Installer interface decision and console presentation proposal
 
-Date: 2026-10-23. Status: console-only direction selected; presentation changes are proposals, not implemented or approved for implementation.
+Date: 2026-10-23. Status: console-only direction selected. The user selected the third displayed concept and authorized implementation in codex/console-presentation; separate GUI work remains deferred.
 
 ## Decision to preserve
 
@@ -29,7 +29,7 @@ Console and GUI would be separate generated entry points, selected at build time
 
 ## Console layout proposal
 
-Refine the current visual language rather than redesign it: dark navy backdrop, slate form surface, darker editable fields, pale text, subdued captions, cyan focus, filled action buttons, color-defined edges and small shadows. Preserve the user's preference for no box-drawing borders. Keep application-defined YAML wording authoritative.
+Refine the current visual language rather than redesign it: dark navy backdrop, slate form surface, darker editable fields, pale text, subdued captions, cyan focus, filled action buttons and flat color-defined surfaces. Preserve the user's preference for no box-drawing borders. Keep application-defined YAML wording authoritative.
 
 - Review an 80-column by 24-row terminal as the compact baseline, rather than forcing every terminal to that size. Retain responsive growth, long-path wrapping, scrolling, minimum-size notices, and all field values during resize.
 - Choices: application name/version and description, `Install to:` field, existing relevant options, optional application inputs, then keyboard hints and Install/Cancel actions. Keep current YAML defaults, locked values, dependencies, and platform button order.
@@ -37,7 +37,7 @@ Refine the current visual language rather than redesign it: dark navy backdrop, 
 - Summary: clear actual outcome, destination and useful messages, then Close. Do not imply rollback or cancellation after the operation has completed.
 - Font enlargement is a bonus where supported; do not require a specific font, install fonts, or shrink text to conceal layout problems.
 
-Visual concepts shown with this discussion are illustrative layout proposals, not screenshots of an implemented installer, exact character-grid validation, or evidence of native host support. Existing source and presentation rules were inspected; production installer code is unchanged.
+Visual concepts shown with this discussion are illustrative layout proposals, not screenshots of an implemented installer, exact character-grid validation, or evidence of native host support. The third displayed concept is now the visual reference for the feature implementation. Real Cursive-cell previews use User in sample paths. The capability table below remains the original research/proposal; docs/INSTALLATION.md describes the narrower implemented support.
 
 ## Host detection and behavior proposal
 
@@ -72,4 +72,11 @@ For a reused terminal, prefer reversible session changes and restore captured st
 
 ## Verification and next acceptance gate
 
-This task saves a decision and design proposal only. Review the documentation diff, links, encoding/EOL preservation and Git whitespace; runtime tests are not warranted for a documentation-only change. Native title/icon/size/font support is research-derived and has not been exercised on Windows, Linux, macOS or SSH in this task. Before implementation, the user should select or refine the visual proposal and agree on the first supported-host scope.
+The initial discussion was documentation-only. The user then selected the third
+concept and approved console implementation in a feature worktree. Current
+verification and implemented host limits are recorded in the implementation
+changelog, installation contract and design QA report. The historical research
+table above is not a promise of implemented support. In particular, current
+Windows Terminal can accept live XTWINOPS resize requests; the feature includes
+that path while keeping icon/font control host-owned. Native graphical-host
+acceptance remains separate from unit and PTY protocol verification.

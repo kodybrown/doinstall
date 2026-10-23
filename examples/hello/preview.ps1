@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$Installer,
     [Parameter(Mandatory = $true)][string]$Builder,
-    [switch]$SelfExtracting
+    [switch]$SelfExtracting,
+    [string]$TerminalSize,
+    [ValidateRange(6, 72)][Nullable[int]]$TerminalFontSize
 )
 $ErrorActionPreference = 'Stop'
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
@@ -42,7 +44,12 @@ try {
     Write-Host "Preview root: $stage"
     Write-Host 'Keep preview installation and command paths under this temporary root.'
     # Make PATH immutable in the form so this preview never changes user PATH.
-    & $package --interactive --set add-to-path=false
+    # Presentation preferences are session-only. Unsupported hosts ignore them;
+    # the preview's fixed PATH policy remains authoritative.
+    [string[]]$presentationArguments = @()
+    if ($TerminalSize) { $presentationArguments += @('--terminal-size', $TerminalSize) }
+    if ($null -ne $TerminalFontSize) { $presentationArguments += @('--terminal-font-size', [string]$TerminalFontSize) }
+    & $package --interactive --set add-to-path=false @presentationArguments
     if ($LASTEXITCODE -notin @(0, 130)) { throw 'Installer reported an error' }
     if (Test-Path -LiteralPath (Join-Path $application 'installer/installation.yaml')) {
         & $package uninstall --non-interactive --install-dir $application

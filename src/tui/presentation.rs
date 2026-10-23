@@ -4,8 +4,10 @@ use cursive::{
   event::{Callback, Event, EventResult, Key, MouseButton, MouseEvent},
   theme::{BorderStyle, Color, ColorStyle, Effect, PaletteColor, PaletteStyle, Style, Theme},
   utils::markup::StyledString,
-  view::{View, ViewWrapper},
-  views::{BoxedView, Checkbox, Dialog, DummyView, PaddedView, SelectView, TextArea, TextView, ThemedView},
+  view::{Scrollable, View, ViewWrapper},
+  views::{
+    BoxedView, Checkbox, Dialog, DummyView, LinearLayout, PaddedView, SelectView, TextArea, TextView, ThemedView,
+  },
   Printer, Vec2,
 };
 use unicode_width::UnicodeWidthStr;
@@ -19,6 +21,7 @@ const FOCUS: Color = Color::Rgb(119, 205, 236);
 const BUTTON: Color = Color::Rgb(57, 90, 128);
 const BACKDROP: Color = Color::Rgb(15, 21, 30);
 const SHADOW: Color = Color::Rgb(5, 9, 15);
+const FIELD_FOCUS: Color = Color::Rgb(20, 44, 65);
 pub(super) const WARNING: Color = Color::Rgb(255, 203, 112);
 pub(super) const ERROR: Color = Color::Rgb(255, 143, 151);
 pub(super) const SUCCESS: Color = Color::Rgb(139, 222, 177);
@@ -33,8 +36,8 @@ pub(super) fn description(text: impl Into<String>) -> StyledString {
 
 pub(super) fn theme() -> Theme {
   let mut theme = Theme {
-    // Forms paint their own half-row shadows; the stock full-row shadow must
-    // not add another frame or backfill the transparent cap cells.
+    // Flat cell surfaces match the compact console design. The terminal owns
+    // its outer window; Cursive must not add a stock frame or shadow.
     shadow: false,
     borders: BorderStyle::None,
     ..Theme::default()
@@ -66,128 +69,174 @@ pub(super) fn theme() -> Theme {
   theme
 }
 
-/// The dialog still owns layout, focus and button hit testing. Only its title
-/// and frame are painted here; padded raw labels remain ordinary Buttons. The
-/// layer must be transparent so half-block caps/shadows retain the parent surface.
+/// A flat header inside the scrolling content: long application descriptions
+/// remain readable without taking space away from the form's action buttons.
+struct Header {
+  view: PaddedView<LinearLayout>,
+}
+impl Header {
+  fn new(title: &str, description: &str) -> Self {
+    let mut content = LinearLayout::vertical().child(TextView::new(StyledString::styled(
+      title,
+      Style::from(ColorStyle::new(TEXT, EDGE)).combine(Effect::Bold),
+    )));
+    if !description.is_empty() {
+      content.add_child(TextView::new(StyledString::styled(description, ColorStyle::new(MUTED, EDGE))));
+    }
+    Self {
+      view: PaddedView::lrtb(2, 2, 1, 1, content),
+    }
+  }
+}
+impl ViewWrapper for Header {
+  cursive::wrap_impl!(self.view: PaddedView<LinearLayout>);
+  fn wrap_draw(&self, printer: &Printer) {
+    printer.with_color(ColorStyle::new(TEXT, EDGE), |p| {
+      for y in 0..p.size.y {
+        p.print_hline((0, y), p.size.x, " ");
+      }
+      self.view.draw(p);
+    });
+  }
+}
+
+/// Cursive still owns layout, editing, focus, buttons and mouse hit targets.
+/// Header and body share a scroller; the footer stays put and the keyboard hints
+/// live on the backdrop below it, as in the selected console design.
 pub(super) struct Form {
   pub(super) view: Dialog,
   title: String,
-  backdrop: Color,
   instructions: bool,
+  cycle_buttons: bool,
 }
 impl Form {
-  pub(super) fn new(mut view: Dialog) -> Self {
+  pub(super) fn new(view: Dialog) -> Self {
+    Self::with_description(view, "")
+  }
+  pub(super) fn with_description(mut view: Dialog, description: &str) -> Self {
     let title = view.get_title().to_owned();
-    // Stock titles draw separator glyphs even with BorderStyle::None.
+    // Suppress stock title separators. Borders remain space/color surfaces,
+    // never box-drawing characters or a second set of interactive controls.
     view.set_title("");
-    view.set_padding(cursive::view::Margins::lrtb(2, 2, 1, 0));
-    for button in view.buttons_mut() {
-      let label = button.label().trim_start_matches('<').trim_end_matches('>').to_owned();
-      button.set_label_raw(format!(" {label} "));
-    }
-    // Give the body its ordinary text palette while the dialog's button row
-    // uses filled Primary/Highlight styles. No button geometry is duplicated.
+    view.set_padding(cursive::view::Margins::lrtb(0, 0, 0, 0));
     let content = view.set_content(DummyView);
-    view.set_content(ThemedView::new(theme(), BoxedView::new(content)));
-    Self {
+    view.set_content(ThemedView::new(
+      theme(),
+      LinearLayout::vertical()
+        .child(Header::new(&title, description))
+        .child(PaddedView::lrtb(2, 2, 1, 1, BoxedView::new(content)))
+        .scrollable(),
+    ));
+    let mut form = Self {
       view,
       title,
-      backdrop: BACKDROP,
       instructions: false,
-    }
+      cycle_buttons: false,
+    };
+    form.refresh_buttons();
+    form
   }
   pub(super) fn popup(mut view: Dialog) -> Self {
-    // Padding belongs to the text body, so each popup retains a whole blank
-    // surface row above and below it, apart from the half-block transitions.
+    // Preserve a blank surface row around modal body text.
     let content = view.set_content(DummyView);
     view.set_content(PaddedView::lrtb(0, 0, 1, 1, BoxedView::new(content)));
     let mut form = Self::new(view);
-    form.backdrop = SURFACE;
+    form.cycle_buttons = form.title == "Confirm";
     form
   }
   pub(super) fn instructions(mut self) -> Self {
     self.instructions = true;
     self
   }
+  fn refresh_buttons(&mut self) {
+    let focus = self.view.focus();
+    for (index, button) in self.view.buttons_mut().enumerate() {
+      let label = button.label().trim().trim_start_matches('<').trim_end_matches('>').to_owned();
+      let primary = matches!(label.as_str(), "Install" | "Uninstall" | "Close" | "OK");
+      let text = format!(" {label} ");
+      // Keep the action identifiable while a field is focused. Focused buttons
+      // use the parent highlight instead, so keyboard focus stays unmistakable.
+      if primary && focus != cursive::views::DialogFocus::Button(index) {
+        button.set_label_raw(StyledString::styled(text, ColorStyle::new(FIELD, FOCUS)));
+      } else {
+        button.set_label_raw(text);
+      }
+    }
+  }
 }
 impl ViewWrapper for Form {
   cursive::wrap_impl!(self.view: Dialog);
   fn wrap_required_size(&mut self, available: Vec2) -> Vec2 {
-    let usable = available.saturating_sub((1, 2));
+    let hints = usize::from(self.instructions);
+    let usable = available.saturating_sub((0, hints));
     let mut size = self.view.required_size(usable);
-    size.x = size.x.max(self.title.width() + 5).min(usable.x);
-    size + (1, 2)
+    size.x = size.x.max(48).min(usable.x);
+    size + (0, hints)
   }
   fn wrap_layout(&mut self, size: Vec2) {
-    self.view.layout(size.saturating_sub((1, 2)));
+    self.view.layout(size.saturating_sub((0, usize::from(self.instructions))));
+    self.refresh_buttons();
   }
   fn wrap_on_event(&mut self, event: Event) -> EventResult {
-    self.view.on_event(event.relativized((0, 1)))
+    // A wrapped header makes the content scrollable at narrow sizes. Keep Tab
+    // between the two confirmation choices rather than focusing that scroller
+    // between No and Yes. Enter must always activate the visibly focused choice.
+    let result = if self.cycle_buttons
+      && self.view.buttons_len() == 2
+      && matches!(event, Event::Key(Key::Tab) | Event::Shift(Key::Tab))
+      && let cursive::views::DialogFocus::Button(index) = self.view.focus()
+    {
+      self
+        .view
+        .set_focus(cursive::views::DialogFocus::Button(1 - index))
+        .and(EventResult::consumed())
+    } else {
+      self.view.on_event(event)
+    };
+    self.refresh_buttons();
+    result
   }
   fn wrap_important_area(&self, size: Vec2) -> cursive::Rect {
-    self.view.important_area(size.saturating_sub((1, 2))) + (0, 1)
+    self
+      .view
+      .important_area(size.saturating_sub((0, usize::from(self.instructions))))
   }
   fn wrap_draw(&self, printer: &Printer) {
-    if printer.size.x < 2 || printer.size.y < 4 {
+    let size = printer.size.saturating_sub((0, usize::from(self.instructions)));
+    if size.x < 2 || size.y < 4 {
       return;
     }
-    let size = printer.size.saturating_sub((1, 2));
-    // The visible form starts halfway through its top cap. Beginning the right
-    // shadow on the next full row and ending it with an upper half block gives
-    // the requested one-column / half-row offset, including for modal layers.
-    printer.with_color(ColorStyle::new(SHADOW, SHADOW), |p| {
-      p.print_vline((size.x, 1), size.y, " ");
-    });
-    printer.with_color(ColorStyle::new(SHADOW, self.backdrop), |p| {
-      p.print_hline((1, size.y + 1), size.x, "▀");
-    });
-    printer.with_color(ColorStyle::new(EDGE, self.backdrop), |p| {
-      p.print_hline((0, 0), size.x, "▄");
-    });
-    let printer = printer.offset((0, 1)).cropped(size);
-    printer.with_color(ColorStyle::new(TEXT, SURFACE), |p| {
+    let form = printer.cropped(size);
+    form.with_color(ColorStyle::new(TEXT, SURFACE), |p| {
       for y in 0..size.y {
         p.print_hline((0, y), size.x, " ");
       }
     });
-    let footer = size.y.saturating_sub(3);
-    printer.with_color(ColorStyle::new(TEXT, EDGE), |p| {
-      for y in footer..size.y {
+    // The dialog reserves one border row above content and three action rows.
+    // Color them without repainting over any of the stock controls.
+    form.with_color(ColorStyle::new(TEXT, EDGE), |p| {
+      p.print_hline((0, 0), size.x, " ");
+      for y in size.y.saturating_sub(3)..size.y {
         p.print_hline((0, y), size.x, " ");
       }
     });
     let mut buttons = theme();
     buttons.palette[PaletteStyle::Primary] = ColorStyle::new(TEXT, BUTTON).into();
-    self.view.draw(&printer.theme(&buttons));
-    printer.with_color(ColorStyle::new(TEXT, EDGE), |p| {
-      p.print_hline((0, 0), p.size.x, " ");
-      p.print_hline((0, p.size.y - 1), p.size.x, " ");
-      p.print_vline((0, 0), p.size.y, " ");
-      p.print_vline((p.size.x - 1, 0), p.size.y, " ");
-      p.with_effect(Effect::Bold, |p| p.print((3, 0), &self.title));
-    });
-    printer.with_color(ColorStyle::new(EDGE, SURFACE), |p| {
-      if size.x > 2 {
-        p.print_hline((1, 1), size.x - 2, "▀");
-        p.print_hline((1, footer), size.x - 2, "▄");
-      }
-    });
+    buttons.palette[PaletteStyle::Highlight] = Style::from(ColorStyle::new(FIELD, TEXT)).combine(Effect::Bold);
+    self.view.draw(&form.theme(&buttons));
     if self.instructions {
-      let buttons_width: usize = self.view.buttons().map(|button| button.label().width()).sum::<usize>()
-        + self.view.buttons().count().saturating_sub(1);
-      // Dialog right-aligns its buttons with a three-column outer inset. Keep
-      // the hints on that row and shorten them at narrow widths, never overdraw
-      // the actual Buttons or change their mouse hit areas.
-      let available = size.x.saturating_sub(buttons_width + 9);
       let hint = [
-        "Tab:move  Space:toggle Esc:cancel",
-        "Tab:move Esc:cancel",
-        "Esc:cancel",
+        "Tab: move  Space: toggle  Esc: cancel",
+        "Tab: move  Esc: cancel",
+        "Esc: cancel",
       ]
       .into_iter()
-      .find(|hint| hint.width() <= available)
+      .find(|hint| hint.width() <= size.x.saturating_sub(6))
       .unwrap_or("");
-      printer.with_color(ColorStyle::new(TEXT, EDGE), |p| p.print((3, size.y - 2), hint));
+      printer.with_color(ColorStyle::new(MUTED, BACKDROP), |p| {
+        p.print_hline((0, size.y), size.x, " ");
+        p.print((3, size.y), hint);
+      });
     }
   }
 }
@@ -442,8 +491,8 @@ impl ViewWrapper for WrappedInput {
   fn wrap_draw(&self, printer: &Printer) {
     let mut theme = theme();
     if printer.focused && printer.enabled {
-      theme.palette[PaletteStyle::EditableText] = ColorStyle::new(FIELD, FOCUS).into();
-      theme.palette[PaletteStyle::EditableTextCursor] = ColorStyle::new(TEXT, BUTTON).into();
+      theme.palette[PaletteStyle::EditableText] = ColorStyle::new(FOCUS, FIELD_FOCUS).into();
+      theme.palette[PaletteStyle::EditableTextCursor] = ColorStyle::new(FIELD_FOCUS, FOCUS).into();
     }
     self.view.draw(&printer.theme(&theme));
   }

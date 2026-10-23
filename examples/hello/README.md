@@ -43,6 +43,10 @@ $target = (cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Js
 ```
 
 Add `-SelfExtracting` to exercise the ZIP launcher and direct console handoff.
+Add `-TerminalSize 100x30` to request a grow-only minimum viewport where supported,
+and optionally `-TerminalFontSize 20` for classic Windows Console Host font height.
+These preferences do not change persistent terminal settings; unsupported hosts
+keep their existing presentation. See [host support and runtime flags](../../docs/INSTALLATION.md#optional-terminal-window-presentation).
 The precompiled `doinstall-launcher.exe` must be beside the builder. The same
 temporary installation and locked-off PATH policy apply; extracted source
 directories are intentionally retained outside the preview's cleanup root.

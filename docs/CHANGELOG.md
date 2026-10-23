@@ -759,3 +759,32 @@
   terminal documentation; checked local links, preserved existing text/EOLs and
   passed Git whitespace checks. No runtime tests or native terminal capability
   acceptance were run for this documentation-only change.
+
+### 2026-10-23 Polish the compact console installer and terminal presentation
+
+- Match the selected compact console design with a flat slate metadata header,
+  darker editor/cyan text focus, filled primary actions, distinct keyboard focus,
+  and hints on the backdrop below the footer. Keep Cursive's real controls and
+  existing minimum-size notice, content-driven height, width growth, wrapping,
+  scrolling, input grouping/wording, CLI locks and safe cancellation boundaries.
+- Add temporary interactive-dialog title, icon and minimum-viewport preferences,
+  opt-in classic Windows font height and a customization opt-out. Keep YAML,
+  receipts, configuration identity, plain/unattended/validation behavior and
+  persistent terminal profiles unchanged. Unsupported operations are skipped.
+- Gate Windows icon/font/geometry APIs on the visible classic console window;
+  never target the foreground window. Reuse available declared payload icons or
+  executable resources. Support identified Windows Terminal/iTerm2/xterm resize
+  requests, skip local window operations remotely or through multiplexers, strip
+  title control characters and restore captured state without undoing detectable
+  manual changes. Document per-host limits and add safe preview parameters.
+- Add real-cell layout/focus/resize coverage with User-only sample paths, plain
+  stream/receipt regressions and Unix PTY acceptance for seven terminal scenarios.
+  Preserve No as the default cancellation choice even in a narrow terminal.
+- Verification: build.cmd verify passed 158 Windows workspace tests, formatting,
+  strict Clippy, shim integrity and whitespace checks. Native Debian WSL passed
+  42 installer unit tests and PTY title/resize/restore/cancel/fallback acceptance;
+  the PTY check passed three consecutive timing-stability runs. Linux all-target
+  strict Clippy and PowerShell preview syntax checks passed. Visual review uses
+  actual Cursive cells at 80x24 and 100x32, not a claim of graphical terminal-host
+  acceptance for native icons/font or macOS. Cargo outputs remain external and
+  isolated per checkout; package version, active installations and PATH unchanged.

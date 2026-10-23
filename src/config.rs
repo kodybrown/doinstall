@@ -23,6 +23,17 @@ pub struct Options {
   pub settings_explicit: bool,
   pub values: BTreeMap<String, Value>,
   pub help: bool,
+  pub terminal: TerminalOptions,
+}
+
+/// Session-only presentation preferences, never installer inputs or receipt data.
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct TerminalOptions {
+  pub title: Option<String>,
+  pub icon: Option<PathBuf>,
+  pub size: Option<(u16, u16)>,
+  pub font_size: Option<u16>,
+  pub disabled: bool,
 }
 impl Options {
   pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Self> {
@@ -43,6 +54,36 @@ impl Options {
         }
         "--validate" => result.validate = true,
         "--plain" => result.plain = true,
+        "--no-terminal-customization" => {
+          ensure!(!result.terminal.disabled, "Duplicate --no-terminal-customization");
+          result.terminal.disabled = true;
+        }
+        "--terminal-title" => {
+          ensure!(result.terminal.title.is_none(), "Duplicate --terminal-title");
+          result.terminal.title = Some(argument_value(&mut args, &arg)?);
+        }
+        "--terminal-icon" => {
+          ensure!(result.terminal.icon.is_none(), "Duplicate --terminal-icon");
+          result.terminal.icon = Some(argument_value(&mut args, &arg)?.into());
+        }
+        "--terminal-size" => {
+          ensure!(result.terminal.size.is_none(), "Duplicate --terminal-size");
+          let value = argument_value(&mut args, &arg)?;
+          let (columns, rows) = value.split_once('x').context("--terminal-size requires COLUMNSxROWS")?;
+          let columns: u16 = columns.parse().context("Invalid terminal column count")?;
+          let rows: u16 = rows.parse().context("Invalid terminal row count")?;
+          ensure!(
+            (50..=500).contains(&columns) && (14..=200).contains(&rows),
+            "Terminal size must be 50..500 columns by 14..200 rows"
+          );
+          result.terminal.size = Some((columns, rows));
+        }
+        "--terminal-font-size" => {
+          ensure!(result.terminal.font_size.is_none(), "Duplicate --terminal-font-size");
+          let value: u16 = argument_value(&mut args, &arg)?.parse().context("Invalid terminal font size")?;
+          ensure!((6..=72).contains(&value), "Terminal font size must be 6..72 pixels");
+          result.terminal.font_size = Some(value);
+        }
         "--config" => {
           ensure!(result.config.is_none(), "Duplicate --config");
           result.config = Some(argument_value(&mut args, &arg)?.into());

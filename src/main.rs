@@ -8,6 +8,7 @@ mod included_process;
 mod launchers;
 mod model;
 mod settings_files;
+mod terminal;
 mod tool_version;
 mod tui;
 mod user_path;
@@ -53,6 +54,9 @@ fn run() -> Result<()> {
     println!(
             "doinstall [install|uninstall] [--config FILE]\n  --interactive | --non-interactive  Override installer.yaml prompt mode\n  --plain                      Use line prompts instead of the interactive dialog\n  --install-dir ABSOLUTE_PATH   Installation root\n  --bin-dir ABSOLUTE_PATH       Enable an additional command in this directory\n  --additional-command         Enable the additional command (default: false)\n  --add-to-path                Add the selected command directory to user PATH (Windows)\n  --set NAME=VALUE              Override a YAML input\n  --profile NAME               Select environment defaults\n  --prune-old-versions          Keep new and previously active builds\n  --desktop-shortcuts --start-menu-shortcuts --local-shortcuts\n  --shortcut-name NAME         Name for shortcuts using ${{shortcut-name}}, without extension\n  --start-menu-nested          Nest Windows shortcuts under name/name.lnk\n  --leave-settings | --remove-settings  Uninstall settings policy\n  --validate                   Validate package without installing or prompting\nInteractive by default; use --non-interactive for automation. Rollback and version switching are not supported."
         );
+    println!(
+      "\nInteractive dialog presentation (best effort; no persistent terminal settings):\n  --terminal-title TEXT        Override the application Setup/Uninstall title\n  --terminal-icon FILE         Classic Windows console icon (.ico/.exe/.dll, first icon)\n  --terminal-size COLSxROWS     Preferred minimum viewport; never shrink (default: 80x24)\n  --terminal-font-size PIXELS   Optional classic Windows console font height (6..72)\n  --no-terminal-customization  Keep the terminal's title, icon, size and font"
+    );
     return Ok(());
   }
   let executable = std::env::current_exe()?;

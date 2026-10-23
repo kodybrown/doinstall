@@ -98,7 +98,7 @@ and [self-extracting contract](docs/INSTALLATION.md#self-extracting-launchers).
 
 ## Interactive installer
 
-Install and uninstall use a themed Cursive form with colored surfaces, a shadow,
+Install and uninstall use a themed Cursive form with colored surfaces, a flat header/footer,
 filled buttons, grouped options, and keyboard navigation. Focused checkboxes
 highlight their whole row and align with the fields; long input values soft-wrap. Choices,
 text-only progress, and wrapped summaries occupy separate screens. Cancel/Escape/Ctrl+C confirms by default;
@@ -106,6 +106,12 @@ text-only progress, and wrapped summaries occupy separate screens. Cancel/Escape
 `--non-interactive` keeps automation output plain. `runtime.theme: default` selects
 the internal theme; colors and layout are not package settings.
 Try the [temporary Windows UI preview](examples/hello/README.md#interactive-windows-preview).
+
+The compact form uses flat header/footer surfaces, cyan field focus and a filled
+primary action, with keyboard hints below the dialog. Its minimum-size behavior,
+content growth, wrapping and scrolling remain intact. Interactive dialogs also
+attempt temporary host title/icon/size changes, with opt-in classic Windows font
+height. Unsupported operations are skipped. See [terminal presentation options](docs/INSTALLATION.md#optional-terminal-window-presentation).
 
 ## Development and acceptance
 

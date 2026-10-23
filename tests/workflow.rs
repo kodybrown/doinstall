@@ -106,6 +106,35 @@ fn install_repeat_update_prune_and_uninstall_preserve_settings() {
   assert!(!f.root.exists());
   assert!(settings.join("user.yaml").exists());
 }
+
+#[test]
+fn terminal_preferences_leave_validation_and_unattended_streams_plain() {
+  let fixture = Fixture::new();
+  let presentation = [
+    "--terminal-title",
+    "Example Setup",
+    "--terminal-size",
+    "100x30",
+    "--terminal-font-size",
+    "20",
+    "--terminal-icon",
+    "unavailable icon.ico",
+  ];
+  let mut validate = vec!["--validate"];
+  validate.extend(presentation);
+  let result = fixture.run(&validate);
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  assert!(!fixture.root.exists());
+  assert!(!result.stdout.contains(&0x1b) && !result.stderr.contains(&0x1b));
+  let result = fixture.run(&presentation);
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  assert!(!result.stdout.contains(&0x1b) && !result.stderr.contains(&0x1b));
+  let receipt = fixture.receipt();
+  assert!(!receipt["values"].to_string().contains("terminal-"));
+  let result = fixture.uninstall(&presentation);
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  assert!(!fixture.root.exists());
+}
 #[test]
 fn validate_and_bad_inputs_do_not_install() {
   let f = Fixture::new();

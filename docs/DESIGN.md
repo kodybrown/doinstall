@@ -215,31 +215,43 @@ presentation metadata: stable sorting groups related controls without changing
 resolution or plain-mode prompt order. Both additions omit unused defaults when
 serialized to preserve package content identity.
 
-The form wrapper paints space-filled side edges, half-block title caps, and a
-header/footer while Cursive's
-Dialog owns geometry, focus, buttons and hit testing. A separate body palette
-allows padded raw button labels to have normal/focused background fills without
-coloring ordinary text as buttons. Validation, cancellation, warnings and errors
-use the same presentation. Checkbox rows align with fields and use full-row
-highlighting and row clicking, retaining the stock checkbox state and enablement
-checks. White checkbox labels use a darker focused row for contrast; descriptions
-and field captions are gray. Group indices affect ordering and blank spacing,
-without generated headings. The built-in form caption is `Install to:`; package
-prompts and plain-mode questions retain their own wording.
+The selected compact presentation uses flat navy/slate character-cell surfaces,
+a darker focused editor with cyan text, a filled cyan primary action, a distinct
+white keyboard focus, and no drawn borders or shadows. Cursive's Dialog still
+owns button geometry, focus and mouse hit testing. Header and body share a
+scroller so long titles, descriptions and options cannot displace the action
+buttons. The subtitle retains application description/copyright metadata; body
+captions and explanations are muted. Checkbox continuation lines remain part of
+the same full-row focus and mouse target, and disabled controls stay out of Tab.
 
-Forms use transparent StackView layers and own their one-column/half-row shadows
-instead of Cursive's full-row shadow/backfill. A reserved top cap row shifts the
-Dialog by one row; event coordinates and important areas use the same offset.
-Popup bodies add one blank surface row above and below the text. Compact keyboard
-hints share the action row and shorten when needed to avoid drawing over buttons.
-Affirmative buttons precede negative buttons on Windows; Linux/macOS reverses
-that order. `Confirm` always focuses No explicitly, independent of placement.
+The keyboard hints have their own row on the backdrop below the footer. They
+shorten at narrow widths without covering buttons. Affirmative buttons precede
+negative buttons on Windows; Linux/macOS reverses that order. Confirm always
+focuses No explicitly. Tab/Shift+Tab cycles the two confirmation choices even
+when the header needs scrolling in a terminal below the main form's minimum size.
 
-TextArea supplies soft wrapping and Unicode cursor editing for single values.
-The wrapper refuses typed newlines, preserves Tab navigation, and limits height
-to four rows with cursor-following scrolling. Editing invalidates layout so fields
-can grow or shrink with their content. Progress remains phase text, and summary
-text wraps inside the scrolling body. No spinner, progress bar or percent is added.
+TextArea retains soft wrapping and Unicode cursor editing for single values.
+Editors refuse typed newlines, preserve Tab navigation and scroll after four
+rows. Main forms retain their minimum-size notice and grow with content and the
+available terminal width; values/cursors survive resize. Progress remains phase
+text, without a spinner, bar or percentage. Existing input grouping, YAML prompts,
+CLI locks, ownership and cancellation boundaries are unchanged.
+
+Interactive dialogs also attempt session-only terminal title, icon and viewport
+customization; font height is opt-in. Native Windows font/icon/size operations
+require a visible ConsoleWindowClass HWND, never a foreground-window search.
+Automatic classic-console sizing requires a dedicated console; an explicit size
+preference permits grow-only sizing of a reused classic console. Native title
+APIs can operate through ConPTY, subject to host policy. Other recognized VT
+hosts receive sanitized title requests; identified Windows Terminal, iTerm2 and
+genuine local xterm can also receive grow-only resize requests. Remote and multiplexed sessions skip local window
+operations. Unknown hosts and unsupported operations retain their existing state.
+
+Preferences live in command-line options, not YAML inputs, configuration identity
+or receipts. Plain, unattended and validation output is unchanged. No terminal is
+launched, no profiles/settings are rewritten, and failures do not block install.
+Restore captured state where supported without undoing manual title/icon/font
+or geometry changes. See the installation contract for exact host limits and flags.
 
 The PATH checkbox distinguishes membership from requested changes. When the
 selected application/command directory is already on persistent PATH, it displays
@@ -254,4 +266,4 @@ Keep the console-only installer and explore polishing Cursive plus optional
 terminal-host title, icon, dimensions and font support. Iced remains the preferred
 candidate if a separate desktop GUI is reconsidered; it is not approved work.
 See [the decision, tradeoffs and host capability proposal](CONSOLE-UI-DIRECTION.md)
-before restarting GUI planning. Runtime/UI changes remain design-only.
+before restarting GUI planning. The user subsequently selected the third displayed concept and authorized its console implementation in a feature worktree. The GUI remains deferred.

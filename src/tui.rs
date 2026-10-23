@@ -135,6 +135,28 @@ pub fn uninstall(root: PathBuf, package: Package, options: Options) -> Result<()
   run(Action::Uninstall { root, package }, options, BTreeMap::new())
 }
 fn run(action: Action, options: Options, values: BTreeMap<String, Value>) -> Result<()> {
+  let icon = match &action {
+    Action::Install { config, package } => package.runtime.shortcuts.iter().find_map(|shortcut| {
+      shortcut
+        .icon
+        .as_ref()
+        .map(|icon| {
+          config
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(&package.payload)
+            .join(icon)
+        })
+        .filter(|path| path.is_file())
+    }),
+    Action::Uninstall { .. } => None,
+  };
+  let _presentation = crate::terminal::Session::begin(
+    &action.package().application.name,
+    action.uninstall(),
+    &options.terminal,
+    icon.as_deref(),
+  );
   let mut siv = cursive::crossterm();
   setup(&mut siv, action, options, values);
   // Signals request the same confirmation as keyboard/button cancellation;
@@ -211,16 +233,16 @@ fn choices(siv: &mut Cursive) {
   let state = siv.user_data::<State>().unwrap();
   let package = state.action.package();
   let title = format!("{} · {}", package.application.name, package.application.version);
-  let mut content = LinearLayout::vertical();
-  for text in [
-    &package.application.copyright,
+  let description = [
     &package.application.description,
-  ] {
-    if !text.is_empty() {
-      content.add_child(TextView::new(presentation::description(text.clone())));
-    }
-  }
-  content.add_child(DummyView.fixed_height(1));
+    &package.application.copyright,
+  ]
+  .into_iter()
+  .filter(|text| !text.is_empty())
+  .cloned()
+  .collect::<Vec<_>>()
+  .join("\n");
+  let mut content = LinearLayout::vertical();
   if let Action::Uninstall { root, .. } = &state.action {
     content.add_child(TextView::new(presentation::description(format!(
       "Uninstall from {}",
@@ -336,7 +358,7 @@ fn choices(siv: &mut Cursive) {
   } else {
     "Install"
   };
-  let mut dialog = Dialog::around(content.scrollable()).title(title);
+  let mut dialog = Dialog::around(content).title(title);
   if cfg!(windows) {
     dialog.add_button(action_label, start);
     dialog.add_button("Cancel", cancel_or_close);
@@ -344,7 +366,9 @@ fn choices(siv: &mut Cursive) {
     dialog.add_button("Cancel", cancel_or_close);
     dialog.add_button(action_label, start);
   }
-  let dialog = Form::new(dialog).instructions().with_name("installer-dialog");
+  let dialog = Form::with_description(dialog, &description)
+    .instructions()
+    .with_name("installer-dialog");
   siv.screen_mut().add_layer(Transparent(SizedDialog::new(dialog)));
   refresh_dependencies(siv);
 }

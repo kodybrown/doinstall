@@ -7,11 +7,13 @@ use std::sync::Mutex;
 struct Cell {
   text: char,
   colors: ColorPair,
+  bold: bool,
 }
 struct Screen {
   size: Vec2,
   position: Vec2,
   colors: ColorPair,
+  bold: bool,
   cells: Vec<Cell>,
 }
 impl Screen {
@@ -24,7 +26,15 @@ impl Screen {
       size,
       position: Vec2::zero(),
       colors,
-      cells: vec![Cell { text: ' ', colors }; size.x * size.y],
+      bold: false,
+      cells: vec![
+        Cell {
+          text: ' ',
+          colors,
+          bold: false
+        };
+        size.x * size.y
+      ],
     }
   }
   fn find(&self, text: &str) -> Vec2 {
@@ -50,7 +60,7 @@ impl Screen {
         _ => "#000000".to_owned(),
       };
       let value = json!({ "width": self.size.x, "height": self.size.y,
-        "cells": self.cells.iter().map(|cell| json!([cell.text.to_string(), color(cell.colors.front), color(cell.colors.back)])).collect::<Vec<_>>() });
+        "cells": self.cells.iter().map(|cell| json!([cell.text.to_string(), color(cell.colors.front), color(cell.colors.back), cell.bold])).collect::<Vec<_>>() });
       std::fs::create_dir_all(&directory).unwrap();
       std::fs::write(
         std::path::Path::new(&directory).join(format!("{name}.json")),
@@ -61,6 +71,73 @@ impl Screen {
   }
 }
 struct Recording(Arc<Mutex<Screen>>);
+
+#[test]
+fn selected_compact_layout_keeps_real_controls_and_grows_for_more_text() {
+  let (_temp, mut previous, _root) = fixture();
+  let mut package = previous.user_data::<State>().unwrap().action.package().clone();
+  package.application.name = "Weekend Designer".into();
+  package.application.description = "Install Weekend Designer on this computer.".into();
+  package.runtime.inputs.clear();
+  // Screenshot samples must not expose the account or temporary directories of
+  // the machine running the test. This test renders choices and never installs.
+  let sample = if cfg!(windows) {
+    r"C:\Users\User\Apps\WeekendDesigner"
+  } else {
+    "/home/User/Apps/WeekendDesigner"
+  };
+  package.runtime.values.insert("install-dir".into(), sample.into());
+  let options = Options::default();
+  let values = config::default_values(&package, &options).unwrap();
+  let mut siv = Cursive::new();
+  setup(
+    &mut siv,
+    Action::Install {
+      config: PathBuf::from("unused"),
+      package,
+    },
+    options,
+    values,
+  );
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 32))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.refresh();
+  runner.focus_name("install-dir").unwrap();
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    let heading = screen.find("Weekend Designer");
+    assert_eq!(screen.cell(heading).colors.back, Color::Rgb(48, 63, 82));
+    let field = screen.find(sample);
+    assert_eq!(screen.cell(field).colors.front, Color::Rgb(119, 205, 236));
+    assert_eq!(screen.cell(field).colors.back, Color::Rgb(20, 44, 65));
+    let hint = screen.find("Tab: move");
+    assert!(hint.y > screen.find(" Install ").y, "Hints must be below the footer");
+    assert_eq!(screen.cell(hint).colors.back, Color::Rgb(15, 21, 30));
+    assert!(!screen.cells.iter().any(|cell| "▀▄┌┐└┘─│".contains(cell.text)));
+    screen.snapshot("selected-layout-100x32");
+  }
+  *screen.lock().unwrap() = Screen::new(Vec2::new(80, 24));
+  runner.on_event(Event::WindowResize);
+  runner.refresh();
+  assert_eq!(form_values(&mut runner)["install-dir"], sample);
+  {
+    let screen = screen.lock().unwrap();
+    screen.find(" Install ");
+    screen.find("Tab: move");
+    screen.snapshot("selected-layout-80x24");
+  }
+  let make_form = |description: &str| {
+    Form::with_description(
+      Dialog::around(TextView::new("Body")).title("Example").button("Close", |_| {}),
+      description,
+    )
+  };
+  let small = make_form("Short description").required_size(Vec2::new(80, 80));
+  let large =
+    make_form(&"A longer description that must remain readable. ".repeat(15)).required_size(Vec2::new(80, 80));
+  assert!(large.y > small.y, "The dialog must grow to accommodate wrapped text");
+}
 impl Backend for Recording {
   fn poll_event(&mut self) -> Option<Event> {
     None
@@ -83,7 +160,11 @@ impl Backend for Recording {
       let colors = screen.colors;
       if position.x < screen.size.x && position.y < screen.size.y {
         let index = position.y * screen.size.x + position.x;
-        screen.cells[index] = Cell { text: ch, colors };
+        screen.cells[index] = Cell {
+          text: ch,
+          colors,
+          bold: screen.bold,
+        };
       }
       screen.position.x += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
     }
@@ -94,14 +175,26 @@ impl Backend for Recording {
       front: screen.colors.front,
       back: background,
     };
-    screen.cells.fill(Cell { text: ' ', colors });
+    screen.cells.fill(Cell {
+      text: ' ',
+      colors,
+      bold: false,
+    });
   }
   fn set_color(&self, colors: ColorPair) -> ColorPair {
     let mut screen = self.0.lock().unwrap();
     std::mem::replace(&mut screen.colors, colors)
   }
-  fn set_effect(&self, _: Effect) {}
-  fn unset_effect(&self, _: Effect) {}
+  fn set_effect(&self, effect: Effect) {
+    if effect == Effect::Bold {
+      self.0.lock().unwrap().bold = true;
+    }
+  }
+  fn unset_effect(&self, effect: Effect) {
+    if effect == Effect::Bold {
+      self.0.lock().unwrap().bold = false;
+    }
+  }
 }
 
 #[test]
@@ -664,7 +757,7 @@ fn cli_path_lock_remains_explained_and_safe_when_membership_changes() {
 }
 
 #[test]
-fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
+fn flat_headers_and_modal_body_margins_use_cell_surfaces_without_frames() {
   let (_temp, mut siv, _root) = fixture();
   let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(100, 44))));
   let mut runner = siv.runner(Box::new(Recording(screen.clone())));
@@ -673,30 +766,12 @@ fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
     let screen = screen.lock().unwrap();
     let title = screen.find("Probe · 1.0");
     assert_eq!(title.x, screen.find("Install to:").x);
-    let left = title.x - 3;
-    let cap = Vec2::new(left, title.y - 1);
-    assert_eq!(screen.cell(cap).text, '▄');
-    assert_eq!(screen.cell(cap).colors.back, Color::Rgb(15, 21, 30));
-    assert_eq!(screen.cell(Vec2::new(left + 1, title.y + 1)).text, '▀');
-    let width = screen.cells[cap.y * screen.size.x + left..]
-      .iter()
-      .take_while(|cell| cell.text == '▄')
-      .count();
-    assert_eq!(screen.cell(Vec2::new(left + width, title.y)).colors.back, Color::Rgb(5, 9, 15));
-    let bottom_shadow = (title.y + 2..screen.size.y)
-      .find(|y| {
-        let cell = screen.cell(Vec2::new(left + 1, *y));
-        cell.text == '▀' && cell.colors.front == Color::Rgb(5, 9, 15)
-      })
-      .unwrap();
-    assert_eq!(
-      screen.cell(Vec2::new(left + 1, bottom_shadow)).colors.back,
-      Color::Rgb(15, 21, 30)
-    );
-    let hints = screen.find("Tab:move  Space:toggle Esc:cancel");
+    assert_eq!(screen.cell(title).colors.back, Color::Rgb(48, 63, 82));
+    assert!(!screen.cells.iter().any(|cell| "▀▄┌┐└┘─│".contains(cell.text)));
+    let hints = screen.find("Tab: move  Space: toggle  Esc: cancel");
     assert_eq!(hints.x, title.x);
-    assert_eq!(hints.y, screen.find(" Install ").y);
-    assert_eq!(hints.y, screen.find(" Cancel ").y);
+    assert!(hints.y > screen.find(" Install ").y);
+    assert_eq!(screen.cell(hints).colors.back, Color::Rgb(15, 21, 30));
   }
   runner.on_event(Event::Key(Key::Esc));
   runner.refresh();
@@ -704,21 +779,12 @@ fn half_block_frames_have_half_row_shadows_and_blank_popup_text_margins() {
   let title = screen.find("Confirm");
   let question = screen.find("Cancel installation?");
   assert_eq!(title.x, question.x);
-  let cap = Vec2::new(title.x - 3, title.y - 1);
-  assert_eq!(screen.cell(cap).text, '▄');
-  assert_eq!(screen.cell(cap).colors.back, presentation::SURFACE);
-  let width = screen.cells[cap.y * screen.size.x + cap.x..]
-    .iter()
-    .take_while(|cell| cell.text == '▄')
-    .count();
+  assert_eq!(screen.cell(title).colors.back, Color::Rgb(48, 63, 82));
   for y in [question.y - 1, question.y + 1] {
-    for x in cap.x + 1..cap.x + width - 1 {
-      let cell = screen.cell(Vec2::new(x, y));
-      assert_eq!(cell.text, ' ');
-      assert_eq!(cell.colors.back, presentation::SURFACE);
-    }
+    let cell = screen.cell(Vec2::new(question.x, y));
+    assert_eq!(cell.text, ' ');
+    assert_eq!(cell.colors.back, presentation::SURFACE);
   }
-  assert_eq!(screen.cell(Vec2::new(cap.x + width, title.y)).colors.back, Color::Rgb(5, 9, 15));
 }
 
 #[test]
@@ -728,12 +794,12 @@ fn compact_footer_hints_never_overlap_the_action_buttons() {
   let mut runner = siv.runner(Box::new(Recording(screen.clone())));
   runner.refresh();
   let screen = screen.lock().unwrap();
-  let hint = screen.find("Tab:move Esc:cancel");
+  let hint = screen.find("Tab: move  Space: toggle  Esc: cancel");
   let install = screen.find(" Install ");
   let cancel = screen.find(" Cancel ");
-  assert_eq!(hint.y, install.y);
-  assert_eq!(hint.y, cancel.y);
-  assert!(hint.x + "Tab:move Esc:cancel".len() < install.x.min(cancel.x));
+  assert!(hint.y > install.y);
+  assert!(hint.y > cancel.y);
+  assert_eq!(screen.cell(hint).colors.back, Color::Rgb(15, 21, 30));
   assert_eq!(install.x < cancel.x, cfg!(windows));
   screen.snapshot("compact-footer");
 }
@@ -756,7 +822,7 @@ fn both_platform_confirmation_orders_keep_no_default_and_yes_clickable() {
       let no = screen.find(" No ");
       assert_eq!(yes.y, no.y);
       assert_eq!(yes.x < no.x, windows);
-      assert_eq!(screen.cell(no).colors.back, Color::Rgb(119, 205, 236));
+      assert_eq!(screen.cell(no).colors.back, Color::Rgb(235, 241, 248));
       screen.snapshot(if windows {
         "confirm-windows"
       } else {
