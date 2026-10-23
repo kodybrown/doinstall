@@ -247,3 +247,11 @@ checked and disabled with a reason. A separate remembered choice supplies form
 values and is restored when the candidate changes to a directory outside PATH.
 CLI locks remain authoritative and explained, so a presentation checkmark cannot
 turn a no-PATH-write override into consent. Membership checks are read-only.
+
+## Console-only direction recorded on 2026-10-23
+
+Keep the console-only installer and explore polishing Cursive plus optional
+terminal-host title, icon, dimensions and font support. Iced remains the preferred
+candidate if a separate desktop GUI is reconsidered; it is not approved work.
+See [the decision, tradeoffs and host capability proposal](CONSOLE-UI-DIRECTION.md)
+before restarting GUI planning. Runtime/UI changes remain design-only.

@@ -745,3 +745,17 @@
   1.7.11 passed the release workflow. Cargo target/build outputs remain external
   at C:/tmp/_rust/doinstall/target. Preserve package version 0.1.1 and active
   installations/PATH. Native Linux/macOS/ARM64 task acceptance is not claimed.
+
+### 2026-10-23 Record the console-only installer direction
+
+- Save the decision to retain and polish the Cursive console installer, why a
+  desktop GUI and custom terminal host are deferred, and Iced as the preferred
+  candidate only if the user later reconsiders that decision.
+- Document proposed layout constraints and best-effort terminal-host title,
+  icon, dimensions and font capabilities, including shell/host distinctions,
+  graceful fallback and limits on persistent settings changes. Link the decision
+  from the design guide; runtime behavior and YAML remain unchanged.
+- Verification: reviewed the documentation against current source and primary
+  terminal documentation; checked local links, preserved existing text/EOLs and
+  passed Git whitespace checks. No runtime tests or native terminal capability
+  acceptance were run for this documentation-only change.
