@@ -461,9 +461,12 @@ packages, so unused presentation metadata does not change package snapshots.
 The default theme uses a dark navy backdrop, flat slate header/footer, a darker
 editor with cyan text when focused, a filled cyan primary action and a distinct
 white focused button. There are no box-drawing borders or half-block shadows.
-Header and body share a scroller so long metadata stays readable while actions
-remain available. Dialog height still follows content and width follows the
-available terminal with its existing margins and minimum-size notice.
+The header and footer stay fixed while the inner form or result section scrolls.
+Oversized metadata can scroll separately inside its bounded header area, keeping
+controls and actions available. Main screens fill the terminal viewport;
+confirmation and validation overlays remain compact. The action group has two
+columns of right padding, matching the form's horizontal inset. Minimum-size
+notices remain available.
 
 Buttons use padded labels without angle brackets. Checkbox focus covers the
 whole row, including wrapped continuation lines; clicking the row toggles it.

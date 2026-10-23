@@ -806,3 +806,23 @@
   42 installer unit tests, seven terminal protocol scenarios in one PTY acceptance
   test, and all-target strict Clippy. Inspect actual Cursive-cell previews at
   80x24 and 100x32; native graphical-host acceptance remains separate.
+
+### 2026-10-23 Keep headers fixed and restore the footer inset
+
+- Leave two footer-colored columns after the final action button on either
+  platform button order, retaining full-width fields and the flat header surface.
+- Scroll the inner form/result section independently beneath the stationary
+  header and above the action footer. Keep unusually long metadata readable in
+  its own bounded header allocation, with controls and actions still reachable.
+- Handle body wheel movement before child controls consume it as focus changes.
+  Preserve keyboard focus scrolling, values, checkbox clicks, compact popups,
+  cancellation defaults and minimum-size notices.
+- Add an 80x14 regression that tabs to the final option, clicks its rendered
+  target and wheels back to the first option while header/footer positions stay
+  fixed. Assert the exact right inset at 80x24 and 100x32 on both platform orders;
+  update the installation/design contract, decision notes and real-cell previews.
+- Verification: build.cmd verify passed 159 Windows workspace tests, formatting,
+  strict Clippy, shim integrity and whitespace checks. Native Debian WSL passed
+  43 installer unit tests, seven terminal protocol scenarios in one PTY acceptance
+  test and all-target strict Clippy. Reviewed actual Cursive-cell captures
+  at 80x14, 80x24 and 100x32; native graphical-host acceptance remains separate.

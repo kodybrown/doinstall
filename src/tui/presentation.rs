@@ -6,9 +6,14 @@ use cursive::{
   utils::markup::StyledString,
   view::{Scrollable, View, ViewWrapper},
   views::{
-    BoxedView, Checkbox, Dialog, DummyView, LinearLayout, PaddedView, SelectView, TextArea, TextView, ThemedView,
+    BoxedView, Checkbox, Dialog, DummyView, LinearLayout, PaddedView, ScrollView, SelectView, TextArea, TextView,
+    ThemedView,
   },
   Printer, Vec2,
+};
+use std::sync::{
+  atomic::{AtomicUsize, Ordering},
+  Arc,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -69,13 +74,14 @@ pub(super) fn theme() -> Theme {
   theme
 }
 
-/// A flat header inside the scrolling content: long application descriptions
-/// remain readable without taking space away from the form's action buttons.
+/// A stationary header above the independently scrolling body. Exceptionally
+/// long metadata can scroll within its own allocation instead of hiding controls.
 struct Header {
-  view: PaddedView<LinearLayout>,
+  view: ScrollView<PaddedView<LinearLayout>>,
+  height: Arc<AtomicUsize>,
 }
 impl Header {
-  fn new(title: &str, description: &str) -> Self {
+  fn new(title: &str, description: &str, height: Arc<AtomicUsize>) -> Self {
     let mut content = LinearLayout::vertical().child(TextView::new(StyledString::styled(
       title,
       Style::from(ColorStyle::new(TEXT, EDGE)).combine(Effect::Bold),
@@ -84,12 +90,21 @@ impl Header {
       content.add_child(TextView::new(StyledString::styled(description, ColorStyle::new(MUTED, EDGE))));
     }
     Self {
-      view: PaddedView::lrtb(2, 2, 1, 1, content),
+      // Dialog reserves the two rightmost columns for footer padding. The
+      // header and body therefore need only their left inset here.
+      view: PaddedView::lrtb(2, 0, 1, 1, content).scrollable(),
+      height,
     }
   }
 }
 impl ViewWrapper for Header {
-  cursive::wrap_impl!(self.view: PaddedView<LinearLayout>);
+  cursive::wrap_impl!(self.view: ScrollView<PaddedView<LinearLayout>>);
+  fn wrap_layout(&mut self, size: Vec2) {
+    // Share the allocated viewport height, not the metadata's virtual height,
+    // so Form can extend its header color through the right padding columns.
+    self.height.store(size.y, Ordering::Relaxed);
+    self.view.layout(size);
+  }
   fn wrap_draw(&self, printer: &Printer) {
     printer.with_color(ColorStyle::new(TEXT, EDGE), |p| {
       for y in 0..p.size.y {
@@ -101,13 +116,14 @@ impl ViewWrapper for Header {
 }
 
 /// Cursive still owns layout, editing, focus, buttons and mouse hit targets.
-/// Header and body share a scroller; the footer stays put and the keyboard hints
-/// live on the backdrop below it, as in the selected console design.
+/// Header and footer stay put while the inner body scrolls. The keyboard hints
+/// live on the backdrop below the footer, as in the selected console design.
 pub(super) struct Form {
   pub(super) view: Dialog,
   title: String,
   instructions: bool,
   cycle_buttons: bool,
+  header_height: Arc<AtomicUsize>,
 }
 impl Form {
   pub(super) fn new(view: Dialog) -> Self {
@@ -118,20 +134,21 @@ impl Form {
     // Suppress stock title separators. The reserved top and side border cells
     // are clipped below because Cursive reserves them even with borders=None.
     view.set_title("");
-    view.set_padding(cursive::view::Margins::lrtb(0, 0, 0, 0));
+    view.set_padding(cursive::view::Margins::lrtb(0, 2, 0, 0));
     let content = view.set_content(DummyView);
+    let header_height = Arc::new(AtomicUsize::new(0));
     view.set_content(ThemedView::new(
       theme(),
       LinearLayout::vertical()
-        .child(Header::new(&title, description))
-        .child(PaddedView::lrtb(2, 2, 1, 1, BoxedView::new(content)))
-        .scrollable(),
+        .child(Header::new(&title, description, header_height.clone()))
+        .child(Body::new(BoxedView::new(content))),
     ));
     let mut form = Self {
       view,
       title,
       instructions: false,
       cycle_buttons: false,
+      header_height,
     };
     form.refresh_buttons();
     form
@@ -185,7 +202,7 @@ impl ViewWrapper for Form {
     if let Event::Mouse { position, .. } = &mut event {
       *position = *position + (1, 1);
     }
-    // A wrapped header makes the content scrollable at narrow sizes. Keep Tab
+    // Oversized metadata can make the header scrollable. Keep Tab
     // between the two confirmation choices rather than focusing that scroller
     // between No and Yes. Enter must always activate the visibly focused choice.
     let result = if self.cycle_buttons
@@ -226,6 +243,9 @@ impl ViewWrapper for Form {
     // The footer retains its three action rows. The stock top/side border
     // cells are outside the visible viewport, leaving a single flat header.
     form.with_color(ColorStyle::new(TEXT, EDGE), |p| {
+      for y in 0..self.header_height.load(Ordering::Relaxed).min(size.y.saturating_sub(3)) {
+        p.print_hline((0, y), size.x, " ");
+      }
       for y in size.y.saturating_sub(3)..size.y {
         p.print_hline((0, y), size.x, " ");
       }
@@ -250,6 +270,51 @@ impl ViewWrapper for Form {
         p.print((2, size.y), hint);
       });
     }
+  }
+}
+
+/// Scroll only the inner section. Handle wheel movement before child controls:
+/// Cursive's LinearLayout otherwise treats wheels as focus grabs and consumes
+/// them over checkboxes without moving the enclosing scrollbar.
+struct Body {
+  view: ScrollView<PaddedView<BoxedView>>,
+  size: Vec2,
+}
+impl Body {
+  fn new(content: BoxedView) -> Self {
+    Self {
+      view: PaddedView::lrtb(2, 0, 1, 1, content).scrollable(),
+      size: Vec2::zero(),
+    }
+  }
+}
+impl ViewWrapper for Body {
+  cursive::wrap_impl!(self.view: ScrollView<PaddedView<BoxedView>>);
+  fn wrap_layout(&mut self, size: Vec2) {
+    self.size = size;
+    self.view.layout(size);
+  }
+  fn wrap_on_event(&mut self, event: Event) -> EventResult {
+    if let Event::Mouse {
+      event: wheel @ (MouseEvent::WheelUp | MouseEvent::WheelDown),
+      position,
+      offset,
+    } = event
+      && position.fits_in_rect(offset, self.size)
+    {
+      let viewport = self.view.content_viewport();
+      let y = if wheel == MouseEvent::WheelUp {
+        viewport.top().saturating_sub(3)
+      } else {
+        viewport.top().saturating_add(3)
+      };
+      return self
+        .view
+        .set_scroll_strategy(cursive::view::scroll::ScrollStrategy::KeepRow)
+        .and(self.view.set_offset((viewport.left(), y)))
+        .and(EventResult::consumed());
+    }
+    self.view.on_event(event)
   }
 }
 

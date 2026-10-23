@@ -128,6 +128,7 @@ fn main_form_fills_viewport_with_top_aligned_controls_and_bottom_actions() {
     let hint = screen.find("Tab: move");
     assert_eq!(hint.y, screen.size.y - 1);
     assert_eq!(screen.find(" Install ").y, screen.size.y - 3);
+    assert_footer_right_padding(&screen);
     assert!(hint.y > screen.find(" Install ").y, "Hints must be below the footer");
     assert_eq!(screen.cell(hint).colors.back, Color::Rgb(15, 21, 30));
     assert!(!screen.cells.iter().any(|cell| "▀▄┌┐└┘─│".contains(cell.text)));
@@ -143,6 +144,7 @@ fn main_form_fills_viewport_with_top_aligned_controls_and_bottom_actions() {
     assert_eq!(screen.find(sample), Vec2::new(2, 6));
     assert_eq!(screen.find(" Install ").y, screen.size.y - 3);
     assert_eq!(screen.find("Tab: move").y, screen.size.y - 1);
+    assert_footer_right_padding(&screen);
     screen.snapshot("selected-layout-80x24");
   }
   let make_form = |description: &str| {
@@ -155,6 +157,101 @@ fn main_form_fills_viewport_with_top_aligned_controls_and_bottom_actions() {
   let large =
     make_form(&"A longer description that must remain readable. ".repeat(15)).required_size(Vec2::new(80, 80));
   assert!(large.y > small.y, "The dialog must grow to accommodate wrapped text");
+}
+
+fn assert_footer_right_padding(screen: &Screen) {
+  let label = if cfg!(windows) {
+    " Cancel "
+  } else {
+    " Install "
+  };
+  let button = screen.find(label);
+  assert_eq!(button.x + label.len(), screen.size.x - 2, "Two columns after the final button");
+  for x in screen.size.x - 2..screen.size.x {
+    assert_eq!(screen.cell(Vec2::new(x, button.y)).colors.back, Color::Rgb(48, 63, 82));
+  }
+}
+
+#[test]
+fn short_console_scrolls_only_the_body_with_header_footer_and_mouse_targets_fixed() {
+  let mut body = LinearLayout::vertical();
+  for index in 0..20 {
+    body.add_child(
+      FocusRow::new(Checkbox::new(), format!("Option {index:02}"))
+        .with_name(format!("option-{index}"))
+        .full_width(),
+    );
+  }
+  let mut dialog = Dialog::around(body).title("Weekend Designer");
+  for label in if cfg!(windows) {
+    ["Install", "Cancel"]
+  } else {
+    ["Cancel", "Install"]
+  } {
+    dialog.add_button(label, |_| {});
+  }
+  let mut siv = Cursive::new();
+  siv.set_theme(presentation::theme());
+  siv.screen_mut().add_layer(Transparent(SizedDialog::new(
+    Form::with_description(dialog, "Always visible description").instructions(),
+  )));
+  let screen = Arc::new(Mutex::new(Screen::new(Vec2::new(80, 14))));
+  let mut runner = siv.runner(Box::new(Recording(screen.clone())));
+  runner.focus_name("option-0").unwrap();
+  runner.refresh();
+  {
+    let screen = screen.lock().unwrap();
+    assert_eq!(screen.find("Weekend Designer"), Vec2::new(2, 1));
+    assert_eq!(screen.find("Always visible description"), Vec2::new(2, 2));
+    screen.find("Option 00");
+    assert_footer_right_padding(&screen);
+  }
+  // Tab follows real focus targets and must scroll the last option into view
+  // without moving either the application metadata or the action strip.
+  for _ in 0..19 {
+    runner.on_event(Event::Key(Key::Tab));
+  }
+  runner.refresh();
+  let last = {
+    let screen = screen.lock().unwrap();
+    assert_eq!(screen.find("Weekend Designer"), Vec2::new(2, 1));
+    assert_eq!(screen.find("Always visible description"), Vec2::new(2, 2));
+    assert_eq!(screen.find(" Install ").y, 11);
+    assert_eq!(screen.find("Tab: move").y, 13);
+    assert_footer_right_padding(&screen);
+    let option = screen.find("Option 19");
+    assert!(option.y >= 4 && option.y < 10);
+    assert_eq!(screen.cell(option).colors.back, Color::Rgb(57, 90, 128));
+    screen.snapshot("short-body-scrolled");
+    option
+  };
+  for event in [
+    MouseEvent::Press(MouseButton::Left),
+    MouseEvent::Release(MouseButton::Left),
+  ] {
+    runner.on_event(Event::Mouse {
+      offset: Vec2::zero(),
+      position: last,
+      event,
+    });
+  }
+  assert!(runner
+    .call_on_name("option-19", |view: &mut FocusRow| view.is_checked())
+    .unwrap());
+  for _ in 0..20 {
+    runner.on_event(Event::Mouse {
+      offset: Vec2::zero(),
+      position: Vec2::new(10, 6),
+      event: MouseEvent::WheelUp,
+    });
+  }
+  runner.refresh();
+  let screen = screen.lock().unwrap();
+  screen.find("Option 00");
+  assert_eq!(screen.find("Weekend Designer"), Vec2::new(2, 1));
+  assert_eq!(screen.find("Always visible description"), Vec2::new(2, 2));
+  assert_footer_right_padding(&screen);
+  screen.snapshot("short-body-top");
 }
 impl Backend for Recording {
   fn poll_event(&mut self) -> Option<Event> {

@@ -47,6 +47,9 @@ full-width editors inside consistent padding, and actions at the bottom.
 Confirmation and validation overlays stay compact. The extra reserved border row
 above the header is removed. This supersedes the earlier content-height main
 dialog behavior; wrapping, scrolling, resize notices and stored values remain.
+The next screenshot review fixes the header while only the inner section scrolls
+and requires two columns after the final footer button. Exceptionally long
+metadata scrolls independently within a bounded header allocation.
 
 Detect terminal capabilities, not just the shell name. PowerShell, CMD, Bash, and zsh can run inside many terminal hosts. Environment hints such as WT_SESSION, TERM_PROGRAM and TERM, terminal status, native window information, and bounded capability checks can inform a small supported-host list. Hints may be inherited or obscured by SSH, tmux, screen, and IDE terminals; TERM=xterm-256color is not proof of xterm.
 

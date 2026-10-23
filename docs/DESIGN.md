@@ -220,9 +220,12 @@ a darker focused editor with cyan text, a filled cyan primary action, a distinct
 white keyboard focus, and no drawn borders or shadows. Cursive's Dialog still
 owns button geometry, focus and mouse hit testing. Its reserved top and side
 border cells are clipped, with layout, pointer coordinates and focus rectangles
-translated together, avoiding a redundant strip above the header. Header and body share a
-scroller so long titles, descriptions and options cannot displace the action
-buttons. The subtitle retains application description/copyright metadata; body
+translated together, avoiding a redundant strip above the header. The body scrolls
+independently below the stationary header and above the action footer. Oversized
+metadata has its own bounded header scroller so controls remain reachable.
+Explicit right padding keeps two columns after the final action; header coloring
+extends through those padding columns. The subtitle retains application
+description/copyright metadata; body
 captions and explanations are muted. Checkbox continuation lines remain part of
 the same full-row focus and mouse target, and disabled controls stay out of Tab.
 
