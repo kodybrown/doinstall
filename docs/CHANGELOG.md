@@ -842,3 +842,13 @@
   Git step cannot read the checkout's relativeWorktrees extension with WSL's
   older Git; Windows Git verified whitespace without changing repository config.
   Hosted macOS acceptance remains required in dotask before release publication.
+
+### 2026-10-27 Make Unix PTY acceptance compile on macOS
+
+- Pass mutable raw openpty pointers compatible with both Apple's mutable and
+  Linux's const parameters, and infer the platform ioctl request integer type.
+  Keep all seven native terminal protocol scenarios and their assertions enabled.
+- Verification: Windows build.cmd verify and git diff --check passed; native
+  WSL Linux passed the seven-scenario PTY test and all-target strict Clippy.
+  All workspace targets/tests also compiled and passed strict Clippy for
+  aarch64-apple-darwin using Rust 1.95.0; native macOS execution remains CI-owned.

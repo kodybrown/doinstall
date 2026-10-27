@@ -53,7 +53,7 @@ fn interactive_title_resize_restore_and_unsupported_host_fallback_use_the_runtim
     .unwrap();
 
     let (mut master_fd, mut slave_fd) = (-1, -1);
-    let initial = libc::winsize {
+    let mut initial = libc::winsize {
       ws_row: 24,
       ws_col: 80,
       ws_xpixel: 0,
@@ -61,8 +61,17 @@ fn interactive_title_resize_restore_and_unsupported_host_fallback_use_the_runtim
     };
     // openpty creates fixture-owned descriptors. Files immediately assume their
     // ownership, and only the child session receives the slave as its terminal.
+    // Apple takes mutable pointers here; Linux accepts those pointers as const.
     assert_eq!(
-      unsafe { libc::openpty(&mut master_fd, &mut slave_fd, std::ptr::null_mut(), std::ptr::null(), &initial) },
+      unsafe {
+        libc::openpty(
+          &mut master_fd,
+          &mut slave_fd,
+          std::ptr::null_mut(),
+          std::ptr::null_mut(),
+          &raw mut initial,
+        )
+      },
       0
     );
     let mut master = unsafe { File::from_raw_fd(master_fd) };
@@ -125,7 +134,8 @@ fn interactive_title_resize_restore_and_unsupported_host_fallback_use_the_runtim
       .stderr(Stdio::from(slave.try_clone().unwrap()));
     unsafe {
       command.pre_exec(|| {
-        if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY, 0) < 0 {
+        // The ioctl request integer type differs between Apple and Linux libc.
+        if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
           return Err(std::io::Error::last_os_error());
         }
         Ok(())
