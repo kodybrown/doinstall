@@ -826,3 +826,19 @@
   43 installer unit tests, seven terminal protocol scenarios in one PTY acceptance
   test and all-target strict Clippy. Reviewed actual Cursive-cell captures
   at 80x14, 80x24 and 100x32; native graphical-host acceptance remains separate.
+
+### 2026-10-27 Resolve builder command links before finding sibling tools
+
+- Resolve the real Unix builder executable before reporting adjacent tool paths
+  or selecting the default launcher template. macOS may return the command link
+  from current_exe; installed command directories do not contain the real tools.
+- Retain native binary validation, payload/destination no-links checks and Windows
+  shim behavior. Add Unix linked-builder query/default-template packaging coverage
+  with Unicode paths, an unrelated cwd and an empty PATH; retain self-install,
+  upgrade, repackaging and uninstall acceptance through installed commands.
+- Verification: build.cmd verify and git diff --check passed on Windows. Native
+  WSL Linux passed linked-builder packaging, self-install/upgrade/uninstall,
+  all workspace tests, formatting, strict Clippy and shim integrity. Its final
+  Git step cannot read the checkout's relativeWorktrees extension with WSL's
+  older Git; Windows Git verified whitespace without changing repository config.
+  Hosted macOS acceptance remains required in dotask before release publication.

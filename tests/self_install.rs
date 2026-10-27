@@ -123,3 +123,48 @@ fn tool_path_query_requires_real_adjacent_tools_and_accepts_no_packaging_flags()
   assert!(!output.status.success());
   assert!(String::from_utf8_lossy(&output.stderr).contains("must be used alone"));
 }
+
+#[cfg(unix)]
+#[test]
+fn linked_builder_uses_real_siblings_for_query_and_default_launcher() {
+  let temp = support::temporary();
+  let tools = temp.path().join("real tools 日本語");
+  snapshot(&tools);
+  let commands = temp.path().join("commands");
+  fs::create_dir(&commands).unwrap();
+  let link = commands.join("builder-link");
+  std::os::unix::fs::symlink(tools.join("doinstall-builder"), &link).unwrap();
+  // The commands directory deliberately contains no runtime or launcher. Both
+  // lookups must follow the builder link instead of searching PATH or cwd.
+  let mut query = command(&link, &["--print-tool-paths"]);
+  query.current_dir(&commands).env("PATH", "");
+  let info: Value = serde_json::from_slice(&good(query).stdout).unwrap();
+  assert_eq!(Path::new(info["Installer"].as_str().unwrap()), tools.join("doinstall"));
+  assert_eq!(
+    Path::new(info["LauncherTemplate"].as_str().unwrap()),
+    tools.join("doinstall-launcher")
+  );
+  let config = temp.path().join("source.yaml");
+  let yaml = serde_json::json!({"schema":1,
+    "application":{"id":"linked-builder","name":"Linked builder","version":"1.0.0"},
+    "platform":std::env::consts::OS,"architecture":installer::architecture().unwrap(),
+    "payload":tools,"runtime":{"interactive":false,
+      "commands":[{"name":"linked-builder","executable":"doinstall"}]}});
+  fs::write(&config, serde_saphyr::to_string(&yaml).unwrap()).unwrap();
+  let report = temp.path().join("result.json");
+  let mut build = command(&link, &["--self-extracting"]);
+  build
+    .arg("--installer")
+    .arg(tools.join("doinstall"))
+    .arg("--config")
+    .arg(&config)
+    .arg("--output")
+    .arg(temp.path().join("delivery"))
+    .arg("--result-file")
+    .arg(&report)
+    .current_dir(&commands)
+    .env("PATH", "");
+  good(build);
+  let result: Value = serde_json::from_slice(&fs::read(report).unwrap()).unwrap();
+  assert!(Path::new(result["FilePath"].as_str().unwrap()).is_file());
+}

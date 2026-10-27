@@ -28,6 +28,15 @@ fn main() {
     std::process::exit(1);
   }
 }
+fn executable_directory() -> Result<PathBuf> {
+  let executable = std::env::current_exe()?;
+  // Unix command links may be returned literally by current_exe (notably on
+  // macOS). Resolve the builder itself before locating its real tool siblings;
+  // payload/destination paths still retain their independent no-links checks.
+  #[cfg(unix)]
+  let executable = std::fs::canonicalize(executable)?;
+  Ok(executable.parent().context("Builder has no directory")?.to_path_buf())
+}
 fn run() -> Result<()> {
   let mut arguments = std::env::args().skip(1).peekable();
   if arguments.peek().is_some_and(|arg| arg == "--print-tool-paths") {
@@ -35,10 +44,7 @@ fn run() -> Result<()> {
     ensure!(arguments.next().is_none(), "--print-tool-paths must be used alone");
     // A command shim launches this real binary. Resolve its own siblings,
     // never package the PATH shim or infer an active version from directories.
-    let directory = std::env::current_exe()?
-      .parent()
-      .context("Builder has no directory")?
-      .to_path_buf();
+    let directory = executable_directory()?;
     let installer = directory.join(if cfg!(windows) {
       "doinstall.exe"
     } else {
@@ -109,7 +115,7 @@ fn run() -> Result<()> {
   );
   let template = if self_extracting {
     Some(files::absolute(
-      &launcher_template.unwrap_or(std::env::current_exe()?.with_file_name(if cfg!(windows) {
+      &launcher_template.unwrap_or(executable_directory()?.join(if cfg!(windows) {
         "doinstall-launcher.exe"
       } else {
         "doinstall-launcher"
