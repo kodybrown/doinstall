@@ -1,10 +1,8 @@
-description: Build, run all tests, verify shim integrity and check whitespace without changing the version.
-requires: [{kind: task, value: _/rust/test}, {kind: tool, value: cargo}, {kind: tool, value: git}]
+description: Build and inspect tools, run all tests, lint and verify shims; daily profile by default.
+options:
+  - {name: profile, choices: [dev, release], default: dev}
+requires: [{kind: tool, value: cargo}, {kind: tool, value: git}]
 steps:
-  - run: _/rust/test
   - exec:
       executable: cargo
-      arguments: [run, --quiet, --locked, --package, doinstall-dev, --, shim, --verify]
-  - exec:
-      executable: git
-      arguments: [diff, --check]
+      arguments: [run, --quiet, --locked, --profile, bootstrap, --package, doinstall-dev, --, verify, --profile, {parameter: profile}]

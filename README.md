@@ -21,8 +21,9 @@ Optional Rust tasks are installed from dotask's published catalog under
 [.tasks/_/rust](.tasks/_/rust/README.md), with thin
 project entry points: `dotask build`, `dotask run`, `dotask test`,
 `dotask update-version`, and `dotask create-doinstall-installer`.
-Build formats, lints, compiles and scans the tools without changing the package
-version. Run/test build first. After testing, explicitly increment the version,
+Project build/run/test wrappers use the standalone Cargo helper, while format,
+Clippy and version tasks retain their managed adapters. Build formats, lints,
+compiles and scans the tools without changing the package version. Run/test build first. After testing, explicitly increment the version,
 review/commit, fast-forward main and push it; Actions verifies and publishes that
 version. There is no local publish or manual tagging step. See the
 [release procedure](docs/RELEASES.md#local-tasks-and-maintainer-procedure).
@@ -45,19 +46,32 @@ uninstall, and tool discovery from dotask or another build system.
 ## Build from source
 
 The pinned Rust 1.95.0 toolchain, Cargo, rustfmt, clippy, and a host linker are
-required. Rustup reads `rust-toolchain.toml`. All development/release helpers are
+required. Rustup reads `rust-toolchain.toml`. See the
+[daily build measurements](docs/BUILD-PERFORMANCE.md) for timings, profile
+selection and repeatable commands. All development/release helpers are
 Rust and run through Cargo; Python and installed dotask are not required.
 
 ```powershell
 .\build.cmd build
 .\build.cmd verify
+.\build.cmd run -- --version
+# Full release optimization when explicitly requested:
+.\build.cmd build --profile release
+.\build.cmd verify --profile release
 ```
 
 Linux/macOS use `./build.sh build` and `./build.sh verify`. With no arguments the
 launcher lists development commands. Outputs remain external; locate them with
 `cargo metadata --format-version 1 --no-deps --locked` (`target_directory`).
 `doinstall[.exe]`, `doinstall-builder[.exe]`, and the precompiled
-`doinstall-launcher[.exe]` template are under `release/` there.
+`doinstall-launcher[.exe]` template are under `debug/` for the default `dev` profile
+or `release/` for `--profile release`. Daily builds use incremental compilation without LTO; the
+release profile retains fat LTO and one code-generation unit. Packaging and CI
+release verification explicitly select `release`. These commands never change
+the package version. Cached builds retain their original embedded UTC timestamp;
+source changes refresh it. `RUST_BUILD_TIMESTAMP` remains an explicit override.
+The launchers keep the build driver in a separate fast `bootstrap/` output so
+Windows workspace tests can rebuild helper executables without file locks.
 `build --stage-dir PATH` stages those tools and the optional `doinstall-server`
 helper into a selected directory. The helper supports the reusable
 [Debian/Ubuntu web stack recipe](docs/DEBIAN-WEB-STACK.md); the engine does not

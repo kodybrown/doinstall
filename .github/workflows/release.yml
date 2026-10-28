@@ -53,9 +53,9 @@ jobs:
       - name: Verify standalone project
         run: |
           if [[ "$RUNNER_OS" == Windows ]]; then
-            MSYS_NO_PATHCONV=1 cmd.exe /d /c build.cmd verify
+            MSYS_NO_PATHCONV=1 cmd.exe /d /c build.cmd verify --profile release
           else
-            ./build.sh verify
+            ./build.sh verify --profile release
           fi
       - name: Build, inspect and exercise native deliveries
         env:

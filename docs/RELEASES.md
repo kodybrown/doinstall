@@ -204,8 +204,10 @@ Optional managed task copies live in [.tasks/_/rust](../.tasks/_/rust/README.md)
 Canonical sources are published in
 [dotask's Rust catalog](https://github.com/kodybrown/dotask/tree/main/shared-tasks/rust).
 Users call thin project tasks; shared sources remain product-independent.
-Installed dotask and Rust are conveniences
-for this local flow. CI and release assembly bootstrap through Cargo without
+Build/run/test call doinstall's Cargo-only helper so the same profile, path
+remapping and inspection policy applies through either entry point. Managed
+format/Clippy/version adapters remain unchanged.
+Installed dotask is optional; Rust and Cargo are required for source builds. CI and release assembly bootstrap through Cargo without
 installed dotask, Python, .NET or consumer checkouts.
 
 Management created the minimal `.dotasks.yaml` project configuration and
@@ -235,6 +237,9 @@ cd C:\Users\kodyb\Projects\doinstall
 dotask build
 dotask run --args '["--version"]'
 dotask test
+# Explicitly opt into the unchanged fully optimized release profile:
+dotask build --profile release
+dotask test --profile release
 dotask update-version --dry-run
 dotask update-version
 # Alternatively choose ONE: --increment-minor or --increment-major.
@@ -257,6 +262,24 @@ Stop if fast-forward promotion or the push fails; do not force or replace shared
 history. Your work ends after the push. The Actions run and resulting release
 remain visible on GitHub; publication requires every verification gate to pass.
 
+Daily `build`, `run` and `test` default to Cargo's `dev` profile (incremental,
+256 code-generation units, no optimization or debug information). Pass
+`--profile release` for the unchanged fat-LTO, single-unit optimized profile.
+`build.cmd build/run/verify` accept the same profile; `run --bin TOOL -- ARG...` or
+`run --args JSON` forwards literal arguments. Tools go under evaluated Cargo
+`debug/` or `release/` output; `build --stage-dir PATH` accepts an external directory.
+Installer creation, `package`, `release build` and CI release verification always
+use `release`; there is no local publishing command.
+
+Launchers compile the build driver with the fast `bootstrap` profile, separate
+from the `dev`/`release` executables that workspace tests rebuild. Direct Cargo
+verification uses the same bootstrap profile; ordinary `build.cmd verify` and
+`dotask test` select it automatically.
+
+~~~powershell
+cargo run --profile bootstrap --package doinstall-dev -- verify
+~~~
+
 Build formats source, runs strict Clippy, compiles with private-path remapping,
 and scans all four tools. Run builds once and executes the exact scanned
 doinstall binary. Its --args option is a JSON string array preserving literal
@@ -271,13 +294,15 @@ defaults to a patch increment; --increment is an explicit patch synonym.
 version, retaining unrelated bytes and dependencies. It does no build, commit,
 merge, push, tag or publication. No local publish/tag-release tasks remain.
 
-Each build captures a fresh UTC date for human --version output:
+The package build script captures a UTC identity for human --version output:
 MAJOR.MINOR.PATCH+yyMM.ddhh plus full UTC build time. Cargo, asset/install versions
 and GitHub's derived tag use the SemVer core. The date has no SemVer precedence
-and is never squeezed into Windows numeric version fields. Ordinary Cargo
-builds embed their compilation time; cached binaries retain that time.
-RUST_BUILD_TIMESTAMP permits an explicit timestamp. Generated build records
-remain outside source and are independent of explicit version preparation.
+and is never squeezed into Windows numeric version fields. Source, manifest or
+lockfile changes refresh that identity; cached binaries retain it.
+`RUST_BUILD_TIMESTAMP` permits an explicit timestamp. Daily wrappers never inject
+a fresh clock value. Source/manifest changes refresh the shared tool identity;
+unchanged builds keep the original executable bytes and timestamp. Generated
+build records remain outside source and are independent of explicit version preparation.
 
 Local packaging uses the freshly built builder/runtime/template/server and the
 builder's actual result FilePath. It creates and inspects both native deliveries
@@ -307,7 +332,7 @@ project output policy is preserved.
 
 ```powershell
 cd C:\Users\kodyb\Projects\doinstall
-.\build.cmd verify
+.\build.cmd verify --profile release
 cargo run --quiet --locked --package doinstall-dev -- release build --output C:/tmp/doinstall-release-windows-review
 git diff --check
 ```
@@ -315,7 +340,7 @@ git diff --check
 On native Ubuntu 22.04 x64:
 
 ```bash
-./build.sh verify
+./build.sh verify --profile release
 cargo run --quiet --locked --package doinstall-dev -- release build --output /tmp/doinstall-release-linux-review
 git diff --check
 ```

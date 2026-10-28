@@ -852,3 +852,34 @@
   WSL Linux passed the seven-scenario PTY test and all-target strict Clippy.
   All workspace targets/tests also compiled and passed strict Clippy for
   aarch64-apple-darwin using Rust 1.95.0; native macOS execution remains CI-owned.
+### 2026-10-27 Speed up daily builds while preserving release optimization
+
+- Default local dotask build/run/test and Cargo-only build/run/verify commands to
+  incremental dev builds without optimization or debug information and with 256
+  code-generation units. Expose --profile dev|release; keep fat LTO, stripped
+  binaries and one code-generation unit unchanged for explicit release builds,
+  installer creation and CI release verification. Package versions never change.
+- Stop injecting a fresh RUST_BUILD_TIMESTAMP on every build. Let Cargo retain
+  the package build identity until source, manifest, lockfile or explicit time
+  inputs change. Preserve explicit timestamp overrides, identical inspection
+  flags across lint/build/test, final tested-binary inspection and external Cargo
+  outputs. Keep the running helper in a separate fast bootstrap profile so
+  Windows workspace tests can rebuild helper binaries without locking failures.
+- Route project-owned build/run/test wrappers through the standalone Rust helper;
+  keep managed shared-task copies unchanged. Preserve literal run arguments,
+  validate profile/tool selections and refuse source-local staging/output. Refresh
+  the build-helper integrity fingerprint after confirming unchanged shim code and
+  native shim bytes. Document profile selection and repeatable timing commands.
+- Verification: Windows dotask test and build.cmd verify --profile release passed
+  all 161 workspace tests in each profile, formatting, strict all-target Clippy,
+  executable inspection, shim integrity and Git whitespace. Confirm evaluated
+  target_directory/build_directory remain C:\tmp\_rust\doinstall\target. Native
+  Linux/macOS execution and interactive user acceptance were not run for this task.
+- Native dotask create-doinstall-installer passed optimized portable/self-installer
+  creation, matching payload inspection, temporary install, consumer repackaging
+  and uninstall on Windows x64 without changing active installs or PATH. Final
+  warm-cache unchanged builds took 6.97-7.21 seconds (formerly 57.94-62.83); the
+  same source-comment edit took 10.74 seconds (formerly 64.12). Cached dotask build
+  took 7.30 seconds; all four tool hashes, modification times and --version
+  identities stayed unchanged across repeated builds. The source probe was
+  restored exactly and rebuilt. See docs/BUILD-PERFORMANCE.md for methodology.

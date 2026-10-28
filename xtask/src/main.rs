@@ -1,5 +1,6 @@
 //! Cargo bootstraps development without an installed doinstall or task runner.
 //! Packaging invokes freshly built tools; keep this helper outside their output.
+mod daily;
 mod installer;
 mod release;
 use anyhow::{bail, ensure, Context, Result};
@@ -24,16 +25,6 @@ fn execute(command: &mut Command) -> Result<()> {
   let code = command.status().context("Cannot start development tool")?;
   ensure!(code.success(), "Development tool failed: {code}");
   Ok(())
-}
-fn cargo(arguments: &[&str]) -> Result<()> {
-  let mut command = Command::new("cargo");
-  command.current_dir(root()).args(arguments);
-  // Encoded flags are authoritative when the release driver supplies path
-  // remapping. Do not silently replace that policy with the Windows CRT flag.
-  if cfg!(windows) && std::env::var_os("CARGO_ENCODED_RUSTFLAGS").is_none() {
-    command.env("RUSTFLAGS", "-C target-feature=+crt-static");
-  }
-  execute(&mut command)
 }
 fn metadata() -> Result<serde_json::Value> {
   let result = Command::new("cargo")
@@ -60,35 +51,13 @@ fn run() -> Result<()> {
   let args: Vec<_> = std::env::args().skip(1).collect();
   let Some(action) = args.first() else {
     println!(
-      "Commands: build [--stage-dir DIR], package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR], release version|build|collect, verify, shim [--verify]"
+      "Commands: build [--profile dev|release] [--stage-dir DIR], run [--profile dev|release] [--bin TOOL] [--args JSON | -- ARG...], verify [--profile dev|release], package [--output-parent DIR] [--version VERSION] [--result-file FILE] [--distribution-dir DIR], release version|build|collect, shim [--verify]"
     );
     return Ok(());
   };
   match action.as_str() {
     "release" => release::cli(&args[1..]),
-    "build" => {
-      let stage = match &args[1..] {
-        [] => None,
-        [option, path] if option == "--stage-dir" => Some(PathBuf::from(path)),
-        _ => bail!("Use build [--stage-dir DIR]"),
-      };
-      release::build_tools()?;
-      let output = target()?.join("release");
-      if let Some(stage) = stage {
-        fs::create_dir_all(&stage)?;
-        for name in [
-          "doinstall",
-          "doinstall-builder",
-          "doinstall-launcher",
-          "doinstall-server",
-        ] {
-          let name = format!("{name}{}", if cfg!(windows) { ".exe" } else { "" });
-          fs::copy(output.join(&name), stage.join(name))?;
-        }
-      }
-      println!("{}", output.display());
-      Ok(())
-    }
+    "build" | "run" | "verify" => daily::run(action, &args[1..]),
     "package" => {
       let mut output = None;
       let mut version = None;
@@ -143,23 +112,6 @@ fn run() -> Result<()> {
       }
       println!("Installer: {}", artifact.display());
       Ok(())
-    }
-    "verify" => {
-      ensure!(args.len() == 1, "verify takes no arguments");
-      println!("Verification checkout: {}", root().display());
-      cargo(&["fmt", "--all", "--", "--check"])?;
-      cargo(&["test", "--workspace", "--locked", "--release"])?;
-      cargo(&[
-        "clippy",
-        "--workspace",
-        "--all-targets",
-        "--locked",
-        "--",
-        "-D",
-        "warnings",
-      ])?;
-      shim(true)?;
-      execute(Command::new("git").current_dir(root()).args(["diff", "--check"]))
     }
     "shim" => {
       ensure!(args.len() == 1 || args[1..] == ["--verify"], "Use shim [--verify]");

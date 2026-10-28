@@ -43,3 +43,16 @@ resolver = "3"
 lto = true
 strip = true
 codegen-units = 1
+
+# Daily iteration favors compilation speed. Delivery builds explicitly select
+# the release profile; keep its whole-program optimization and compact binaries.
+[profile.dev]
+debug = 0
+strip = true
+incremental = true
+codegen-units = 256
+
+# The running build driver must not occupy an executable that workspace tests
+# rebuild on Windows. Keep its fast, cached output separate from tested tools.
+[profile.bootstrap]
+inherits = "dev"

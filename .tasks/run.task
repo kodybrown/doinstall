@@ -1,9 +1,10 @@
-description: Build and run the current doinstall runtime without installing it.
+description: Build and run an inspected tool without installing it; daily profile by default.
 options:
+  - {name: profile, choices: [dev, release], default: dev}
+  - {name: bin, choices: [doinstall, doinstall-builder, doinstall-launcher, doinstall-server], default: doinstall}
   - {name: args, default: '[]', description: JSON array of literal application arguments.}
-requires: [{kind: task, value: _/rust/run}]
+requires: [{kind: tool, value: cargo}]
 steps:
-  - run: _/rust/run
-    with:
-      bin: doinstall
-      args: {parameter: args}
+  - exec:
+      executable: cargo
+      arguments: [run, --quiet, --locked, --profile, bootstrap, --package, doinstall-dev, --, run, --profile, {parameter: profile}, --bin, {parameter: bin}, --args, {parameter: args}]

@@ -2,7 +2,11 @@
 #[path = "src/tool_version.rs"]
 mod tool_version;
 fn main() {
-  println!("cargo:rerun-if-changed=src/tool_version.rs");
+  // Refresh identity when compilation inputs change, not on every invocation.
+  // All tools share this package build script and therefore the same timestamp.
+  println!("cargo:rerun-if-changed=src");
+  println!("cargo:rerun-if-changed=Cargo.toml");
+  println!("cargo:rerun-if-changed=Cargo.lock");
   println!("cargo:rerun-if-env-changed=RUST_BUILD_TIMESTAMP");
   let seconds = std::env::var("RUST_BUILD_TIMESTAMP")
     .map(|v| v.parse::<u64>().expect("RUST_BUILD_TIMESTAMP must be Unix seconds"))

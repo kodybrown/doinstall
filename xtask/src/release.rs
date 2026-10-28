@@ -11,8 +11,6 @@ use std::{
   path::{Path, PathBuf},
   process::Command,
 };
-#[path = "../../src/tool_version.rs"]
-mod clock;
 pub const TOOLS: [&str; 4] = [
   "doinstall",
   "doinstall-builder",
@@ -114,9 +112,9 @@ pub fn scan(data: &[u8], label: &str, markers: &BTreeSet<String>) -> Result<()> 
   }
   Ok(())
 }
-pub fn configure(command: &mut Command, seconds: u64) -> Result<()> {
+pub fn configure(command: &mut Command) -> Result<()> {
   // Encoded argument boundaries preserve Windows paths containing spaces. Own
-  // these flags for distribution builds rather than capturing the environment.
+  // these flags for inspected builds rather than capturing the environment.
   let mut flags = Vec::<String>::new();
   let root = super::root();
   let sysroot = capture(Command::new("rustc").args(["--print", "sysroot"]))?;
@@ -149,11 +147,17 @@ pub fn configure(command: &mut Command, seconds: u64) -> Result<()> {
   }
   command
     .env_remove("RUSTFLAGS")
-    .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
-    .env("RUST_BUILD_TIMESTAMP", seconds.to_string());
+    .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"));
+  // Let build.rs stamp an actual compilation. A changing environment value
+  // invalidates otherwise fresh executables, even when no source changed.
+  // An explicit caller-supplied RUST_BUILD_TIMESTAMP is still inherited.
   Ok(())
 }
+// Packaging always chooses full release optimization, independent of daily defaults.
 pub fn build_tools() -> Result<()> {
+  build_profile("release").map(|_| ())
+}
+pub fn check_output() -> Result<()> {
   let metadata = super::metadata()?;
   let root = fs::canonicalize(super::root())?;
   for key in ["target_directory", "build_directory"] {
@@ -164,19 +168,30 @@ pub fn build_tools() -> Result<()> {
       );
     }
   }
+  Ok(())
+}
+pub fn build_profile(profile: &str) -> Result<PathBuf> {
+  ensure!(["dev", "release"].contains(&profile), "Use profile dev or release");
+  check_output()?;
   let mut command = Command::new("cargo");
-  command
-    .current_dir(super::root())
-    .args(["build", "--package", "doinstall", "--locked", "--release"]);
-  configure(&mut command, clock::now())?;
+  command.current_dir(super::root()).args([
+    "build",
+    "--package",
+    "doinstall",
+    "--locked",
+    "--profile",
+    profile,
+  ]);
+  configure(&mut command)?;
   run(&mut command)?;
+  scan_tools(profile)?;
+  Ok(super::target()?.join(if profile == "dev" { "debug" } else { "release" }))
+}
+pub fn scan_tools(profile: &str) -> Result<()> {
+  let output = super::target()?.join(if profile == "dev" { "debug" } else { "release" });
   let markers = markers()?;
   for name in TOOLS {
-    scan(
-      &fs::read(super::target()?.join("release").join(super::installer::executable(name)))?,
-      name,
-      &markers,
-    )?;
+    scan(&fs::read(output.join(super::installer::executable(name)))?, name, &markers)?;
   }
   Ok(())
 }
@@ -547,7 +562,7 @@ fn accept(archive: &Path, installer: &Path, expected: &Inventory, markers: &BTre
   );
   Ok(())
 }
-fn destination(path: &Path) -> Result<PathBuf> {
+pub(super) fn destination(path: &Path) -> Result<PathBuf> {
   let path = std::path::absolute(path)?;
   ensure!(
     !path.components().any(|v| matches!(v, std::path::Component::ParentDir)),
@@ -767,6 +782,23 @@ pub fn cli(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  #[test]
+  fn configuration_retains_explicit_time_without_injecting_a_clock() {
+    let mut command = Command::new("cargo");
+    configure(&mut command).unwrap();
+    assert!(!command.get_envs().any(|(key, _)| key == "RUST_BUILD_TIMESTAMP"));
+    command.env("RUST_BUILD_TIMESTAMP", "1704067200");
+    configure(&mut command).unwrap();
+    assert_eq!(
+      command
+        .get_envs()
+        .find(|(key, _)| *key == "RUST_BUILD_TIMESTAMP")
+        .unwrap()
+        .1
+        .unwrap(),
+      "1704067200"
+    );
+  }
   #[test]
   fn tags_require_exact_stable_cargo_version() {
     let version = version(None).unwrap();
