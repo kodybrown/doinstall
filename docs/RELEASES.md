@@ -207,6 +207,18 @@ Users call thin project tasks; shared sources remain product-independent.
 Build/run/test call doinstall's Cargo-only helper so the same profile, path
 remapping and inspection policy applies through either entry point. Managed
 format/Clippy/version adapters remain unchanged.
+
+`dotask create-doinstall-installer` (or `build.cmd release build` /
+`./build.sh release build` without `--output`) saves the verified installer,
+portable archive, metadata and `SHA256SUMS` directly in
+`artifacts/releases/<os>-<arch>/`, for example `artifacts/releases/windows-x64/`.
+Compilation, staging and native acceptance remain in external directories.
+Repeated local creation replaces matching delivery filenames and the current
+checksum list; deliveries from older versions remain. An explicit release
+`--output DIR` retains the fresh external output contract used by CI and does
+not copy into the checkout. `build.cmd package` remains the separate builder
+recipe documented in INSTALLATION.md.
+
 Installed dotask is optional; Rust and Cargo are required for source builds. CI and release assembly bootstrap through Cargo without
 installed dotask, Python, .NET or consumer checkouts.
 

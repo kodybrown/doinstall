@@ -895,3 +895,19 @@
 - Verification: Windows build.cmd verify and git diff --check passed, including
   CLI regression coverage for package-free help/version output and no writes
   in the working directory. Native Linux/macOS acceptance was not run.
+
+### 2026-10-29 Save local installer deliveries in the release artifacts folder
+
+- Make create-doinstall-installer and the default Cargo-only release build copy
+  accepted native deliveries directly into artifacts/releases/<os>-<arch>/.
+  Keep compilation, staging and acceptance external, and preserve explicit CI
+  output behavior. Replace matching local filenames while retaining deliveries
+  from older versions. Document the output contract in the task, release guide
+  and repository agent instructions.
+- Verification: Windows build.cmd verify, dotask create-doinstall-installer and
+  git diff --check passed. Native Windows x64 acceptance exercised the portable
+  tools, temporary tool installation, consumer repackaging and uninstall. All
+  copied installer/archive/metadata checksums match SHA256SUMS. Evaluated Cargo
+  target_directory/build_directory remain C:\tmp\_rust\doinstall\target.
+  Native Linux/macOS execution was not run; active installations and PATH were
+  unchanged.

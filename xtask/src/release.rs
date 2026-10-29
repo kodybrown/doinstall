@@ -784,7 +784,24 @@ pub fn cli(args: &[String]) -> Result<()> {
     "version" => { println!("{}",version(tag)?); Ok(()) }
     "build" => {
       let default = super::target()?.join("release-deliveries").join(format!("{}-{}", std::env::consts::OS, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
-      build(options.get("--output").map(PathBuf::from).unwrap_or(default).as_path(), tag)
+      if let Some(output) = options.get("--output") {
+        return build(Path::new(output), tag);
+      }
+      build(&default, tag)?;
+      // Keep compilation, assembly and acceptance external. Only completed,
+      // verified deliveries belong in the checkout's discoverable release folder.
+      // Explicit CI output directories retain their fresh-directory contract.
+      let delivery = super::root().join("artifacts/releases").join(format!(
+        "{}-{}", std::env::consts::OS, super::installer::architecture()?
+      ));
+      fs::create_dir_all(&delivery)?;
+      for entry in fs::read_dir(&default)? {
+        let entry = entry?;
+        ensure!(entry.file_type()?.is_file(), "Unexpected release delivery directory");
+        fs::copy(entry.path(), delivery.join(entry.file_name()))?;
+      }
+      println!("Release deliveries: {}", delivery.display());
+      Ok(())
     },
     "collect" => collect(Path::new(options.get("--source").context("--source is required")?),Path::new(options.get("--output").context("--output is required")?),tag,options.get("--commit").context("--commit is required")?,publishing),
     _ => bail!("Use release version [--tag TAG], release build --output DIR, or release collect --source DIR --output DIR --commit SHA [--tag TAG --publishing]"),

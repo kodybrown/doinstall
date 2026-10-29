@@ -27,6 +27,9 @@
   builder's result FilePath; do not guess delivery names or compile per application.
 - The shipped installer accepts resolved application/runtime YAML, not build
   steps. Assembly belongs to doinstall-builder on the build machine.
+- Local create-doinstall-installer deliveries belong directly under
+  artifacts/releases/<os>-<arch>/ (windows-x64, linux-x64, etc.). Keep compiler
+  output and staging external; copy deliveries only after native acceptance.
 - Shim source/assets belong here. Verify hashes ordinarily; source changes require
   rebuilding both architectures with LLVM and native Windows acceptance.
 - Preserve useful code comments and update them with behavioral changes.
