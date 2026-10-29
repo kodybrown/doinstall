@@ -911,3 +911,14 @@
   target_directory/build_directory remain C:\tmp\_rust\doinstall\target.
   Native Linux/macOS execution was not run; active installations and PATH were
   unchanged.
+
+### 2026-10-29 Keep Project-Specific Agent Requirements
+
+- Remove shared checkout, commit, output, task-authoring, comment, and reporting
+  policy duplication from AGENTS.md.
+- Preserve single-agent operation, independent Cargo-only development/CI,
+  managed-task protection, installation/receipt/build contracts, current creator
+  and native-acceptance gate, and both-architecture shim verification requirements.
+- Verification: project requirement/reference and Git whitespace checks passed.
+  Existing Cargo manifest/lock edits are preserved; no source/build/test changes
+  were needed for this documentation-only cleanup.
