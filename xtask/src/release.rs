@@ -401,12 +401,22 @@ fn query_tools(directory: &Path) -> Result<()> {
     );
   }
   let mut identities = BTreeSet::new();
+  let mut build_times = BTreeSet::new();
   for name in TOOLS {
     let output = capture(Command::new(directory.join(super::installer::executable(name))).arg("--version"))?;
     ensure!(output.starts_with(&format!("{name} ")), "Missing tool build identity");
-    identities.insert(output[name.len()..].to_owned());
+    let identity = &output[name.len() + 1..];
+    let version = if name == "doinstall" {
+      identity.strip_prefix('v').context("Missing runtime version prefix")?
+    } else {
+      let (version, built) = identity.split_once(" (built ").context("Missing tool build time")?;
+      build_times.insert(built.strip_suffix(')').context("Invalid tool build time")?.to_owned());
+      version
+    };
+    identities.insert(version.to_owned());
   }
   ensure!(identities.len() == 1, "Tools do not share one build identity");
+  ensure!(build_times.len() == 1, "Tools do not share one build time");
   Ok(())
 }
 fn inspect_installer(path: &Path, expected: &Inventory, markers: &BTreeSet<String>) -> Result<()> {
@@ -655,7 +665,9 @@ pub fn build(output: &Path, tag: Option<&str>) -> Result<()> {
   fs::copy(super::root().join("LICENSE.md"), stage.join("LICENSE.md"))?;
   fs::copy(super::root().join("packaging/PORTABLE-README.md"), stage.join("README.md"))?;
   licenses(&stage)?;
-  let identity = capture(Command::new(stage.join(super::installer::executable("doinstall"))).arg("--version"))?;
+  // The builder shares the runtime's package build identity and retains the
+  // detailed timestamp needed here; the runtime's version output is concise.
+  let identity = capture(Command::new(stage.join(super::installer::executable("doinstall-builder"))).arg("--version"))?;
   let display_version = identity.split_whitespace().nth(1).context("Missing display version")?;
   let built_utc = identity
     .split("(built ")

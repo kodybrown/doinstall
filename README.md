@@ -60,6 +60,10 @@ Rust and run through Cargo; Python and installed dotask are not required.
 .\build.cmd verify --profile release
 ```
 
+`doinstall --version` prints only `doinstall v<version>` (including build
+metadata). `doinstall --help` includes the same version banner and lists
+`--version`; neither command requires an installer package.
+
 Linux/macOS use `./build.sh build` and `./build.sh verify`. With no arguments the
 launcher lists development commands. Outputs remain external; locate them with
 `cargo metadata --format-version 1 --no-deps --locked` (`target_directory`).

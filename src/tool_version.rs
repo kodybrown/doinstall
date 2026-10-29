@@ -46,6 +46,12 @@ pub fn now() -> u64 {
     .expect("Clock predates Unix epoch")
     .as_secs()
 }
+pub fn identity(name: &str) -> String {
+  format!(
+    "{name} v{}",
+    option_env!("DOINSTALL_DISPLAY_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+  )
+}
 pub fn print(arguments: &[String], name: &str) -> bool {
   if arguments == ["--version"] {
     println!(

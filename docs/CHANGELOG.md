@@ -883,3 +883,15 @@
   took 7.30 seconds; all four tool hashes, modification times and --version
   identities stayed unchanged across repeated builds. The source probe was
   restored exactly and rebuilt. See docs/BUILD-PERFORMANCE.md for methodology.
+
+### 2026-10-29 Show the runtime version in help and concise version output
+
+- Print only `doinstall v<version>` (including existing build metadata) for
+  `--version`. Show the same banner in `--help` and `-h`, and list the version
+  flag. These commands require no installer package; keep Cargo at 0.1.4.
+- Preserve detailed helper-tool output and release UTC build metadata by reading
+  the matching builder's identity. Normalize versions for release tool-set
+  validation while retaining agreement checks for helper build timestamps.
+- Verification: Windows build.cmd verify and git diff --check passed, including
+  CLI regression coverage for package-free help/version output and no writes
+  in the working directory. Native Linux/macOS acceptance was not run.

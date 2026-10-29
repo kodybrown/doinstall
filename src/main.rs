@@ -17,7 +17,8 @@ mod workflow;
 use anyhow::{ensure, Context, Result};
 use std::path::PathBuf;
 fn main() {
-  if tool_version::print(&std::env::args().skip(1).collect::<Vec<_>>(), "doinstall") {
+  if std::env::args().skip(1).collect::<Vec<_>>() == ["--version"] {
+    println!("{}", tool_version::identity("doinstall"));
     return;
   }
   let default_panic = std::panic::take_hook();
@@ -51,6 +52,10 @@ fn run() -> Result<()> {
   let arguments: Vec<String> = std::env::args().skip(1).collect();
   let options = config::Options::parse(arguments)?;
   if options.help {
+    println!(
+      "{}\n  --version                    Show version and exit\n",
+      tool_version::identity("doinstall")
+    );
     println!(
             "doinstall [install|uninstall] [--config FILE]\n  --interactive | --non-interactive  Override installer.yaml prompt mode\n  --plain                      Use line prompts instead of the interactive dialog\n  --install-dir ABSOLUTE_PATH   Installation root\n  --bin-dir ABSOLUTE_PATH       Enable an additional command in this directory\n  --additional-command         Enable the additional command (default: false)\n  --add-to-path                Add the selected command directory to user PATH (Windows)\n  --set NAME=VALUE              Override a YAML input\n  --profile NAME               Select environment defaults\n  --prune-old-versions          Keep new and previously active builds\n  --desktop-shortcuts --start-menu-shortcuts --local-shortcuts\n  --shortcut-name NAME         Name for shortcuts using ${{shortcut-name}}, without extension\n  --start-menu-nested          Nest Windows shortcuts under name/name.lnk\n  --leave-settings | --remove-settings  Uninstall settings policy\n  --validate                   Validate package without installing or prompting\nInteractive by default; use --non-interactive for automation. Rollback and version switching are not supported."
         );
