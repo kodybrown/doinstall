@@ -9,6 +9,8 @@ struct Options {
   stage: Option<PathBuf>,
   bin: String,
   arguments: Vec<String>,
+  test: Option<String>,
+  filter: Option<String>,
 }
 impl Options {
   fn parse(action: &str, arguments: &[String]) -> Result<Self> {
@@ -17,6 +19,8 @@ impl Options {
       stage: None,
       bin: "doinstall".into(),
       arguments: vec![],
+      test: None,
+      filter: None,
     };
     let mut seen = std::collections::BTreeSet::new();
     let mut items = arguments.iter();
@@ -35,6 +39,22 @@ impl Options {
             "Use profile dev or release"
           );
         }
+        "--test" if action == "verify" => {
+          value.test = items
+            .next()
+            .context("--test requires an integration-test target")?
+            .clone()
+            .into();
+          if value.test.as_deref() == Some("") {
+            value.test = None;
+          }
+        }
+        "--filter" if action == "verify" => {
+          value.filter = items.next().context("--filter requires a test-name substring")?.clone().into();
+          if value.filter.as_deref() == Some("") {
+            value.filter = None;
+          }
+        }
         "--stage-dir" if action == "build" => {
           value.stage = Some(items.next().context("--stage-dir requires a directory")?.into());
         }
@@ -48,6 +68,16 @@ impl Options {
         }
         _ => bail!("Unexpected {action} option: {option}"),
       }
+    }
+    ensure!(
+      value.test.is_some() == value.filter.is_some(),
+      "Focused verification requires both --test TARGET and --filter SUBSTRING"
+    );
+    if let Some(test) = &value.test {
+      ensure!(
+        test.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+        "Invalid integration-test target"
+      );
     }
     Ok(value)
   }
@@ -103,13 +133,17 @@ pub fn run(action: &str, arguments: &[String]) -> Result<()> {
   let output = super::release::build_profile(&options.profile)?;
   match action {
     "verify" => {
-      cargo(&[
+      let mut arguments = vec![
         "test",
         "--workspace",
         "--locked",
         "--profile",
         &options.profile,
-      ])?;
+      ];
+      if let (Some(test), Some(filter)) = (&options.test, &options.filter) {
+        arguments.extend(["--test", test, filter]);
+      }
+      cargo(&arguments)?;
       lint(&options.profile)?;
       // Test feature unification may replace ordinary binaries. Inspect final bytes.
       super::release::scan_tools(&options.profile)?;
@@ -164,6 +198,13 @@ mod tests {
       assert!(parse("build", &args).is_err());
     }
     assert!(parse("verify", &["--stage-dir", "tools"]).is_err());
+    let focused = parse("verify", &["--test", "workflow", "--filter", "installation_root"]).unwrap();
+    assert_eq!(focused.test.as_deref(), Some("workflow"));
+    assert_eq!(focused.filter.as_deref(), Some("installation_root"));
+    assert!(parse("verify", &["--test", "workflow"]).is_err());
+    assert!(parse("verify", &["--filter", "installation_root"]).is_err());
+    assert!(parse("verify", &["--test", "../workflow", "--filter", "root"]).is_err());
+    assert!(parse("build", &["--test", "workflow", "--filter", "root"]).is_err());
   }
   #[test]
   fn run_preserves_literal_arguments_and_refuses_ambiguous_input() {

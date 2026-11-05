@@ -7,6 +7,9 @@ product-specific requirements and exceptions.
 - Work as a single agent; do not delegate unless requested.
 - Changelog: `docs/CHANGELOG.md`.
 - Source verification: `build.cmd verify` (Windows) or `./build.sh verify` (Unix).
+  Focused installation-root checks: `build.cmd verify --test workflow --filter installation_root`
+  or `dotask test --test workflow --filter installation_root`. These retain formatting,
+  all-target lint, final executable inspection, and shim integrity checks.
 - Keep doinstall independent of dotask: no project references, source includes,
   installed dotask requirement, .NET SDK, or dotask-specific configuration reads.
   Optional maintainer tasks may use dotask; Cargo-only development/CI must remain

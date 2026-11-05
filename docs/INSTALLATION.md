@@ -618,7 +618,13 @@ retain their names and receipts; no directory renaming or adoption is performed.
 
 Default application roots are `%LOCALAPPDATA%/Programs/<id>` on Windows and
 `~/.local/lib/<id>` on Linux/macOS. `--install-dir` selects the complete application
-root, not its parent. A stable command is always created inside that root. An
+root, not its parent. A missing root or an existing, entirely empty ordinary
+directory is accepted for a fresh installation. Any entry, including a hidden
+file or an empty subdirectory, makes the root nonempty and requires a valid
+ownership receipt. Inspection errors stop installation; link/junction protections
+remain in effect. No existing contents are adopted or removed to make room.
+
+A stable command is always created inside that root. An
 additional command is optional (`additional-command: false` by default); its
 suggested directory is the application root's parent. `BIN` is not consulted.
 `--bin-dir` enables the additional command unless `--set additional-command=false`

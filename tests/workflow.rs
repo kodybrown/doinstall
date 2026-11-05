@@ -82,6 +82,72 @@ impl Fixture {
   }
 }
 #[test]
+fn installation_root_accepts_a_precreated_empty_directory() {
+  let f = Fixture::new();
+  fs::create_dir(&f.root).unwrap();
+  assert!(fs::read_dir(&f.root).unwrap().next().is_none());
+  f.good(&[]);
+  let first = f.receipt()["active"].clone();
+  f.good(&[]);
+  assert_eq!(f.receipt()["active"], first);
+  f.update("2.0.0");
+  f.good(&[]);
+  assert_eq!(f.receipt()["previous"], first);
+  let result = f.uninstall(&[]);
+  assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+  assert!(!f.root.exists());
+}
+
+#[test]
+fn installation_root_rejects_unowned_contents_including_hidden_files_and_empty_children() {
+  for kind in ["hidden", "empty-child", "invalid-receipt"] {
+    let f = Fixture::new();
+    fs::create_dir(&f.root).unwrap();
+    let retained = match kind {
+      "hidden" => {
+        let path = f.root.join(".keep");
+        fs::write(&path, "preserve").unwrap();
+        path
+      }
+      "empty-child" => {
+        let path = f.root.join("empty child");
+        fs::create_dir(&path).unwrap();
+        path
+      }
+      _ => {
+        let path = f.root.join("installer/installation.yaml");
+        fs::create_dir(path.parent().unwrap()).unwrap();
+        fs::write(&path, "invalid receipt").unwrap();
+        path
+      }
+    };
+    let result = f.run(&[]);
+    assert!(!result.status.success(), "{kind}");
+    assert!(String::from_utf8_lossy(&result.stderr).contains("no valid installation.yaml receipt"));
+    assert!(retained.exists());
+    assert!(!f.root.join("app").exists());
+    assert!(!f.bin.exists());
+    if kind == "hidden" {
+      assert_eq!(fs::read_to_string(retained).unwrap(), "preserve");
+    } else if kind == "invalid-receipt" {
+      assert_eq!(fs::read_to_string(retained).unwrap(), "invalid receipt");
+    } else {
+      assert!(fs::read_dir(retained).unwrap().next().is_none());
+    }
+  }
+}
+
+#[test]
+fn installation_root_rejects_a_regular_file_without_mutation() {
+  let f = Fixture::new();
+  fs::write(&f.root, "preserve").unwrap();
+  let result = f.run(&[]);
+  assert!(!result.status.success());
+  assert_eq!(fs::read_to_string(&f.root).unwrap(), "preserve");
+  assert!(!f.bin.exists());
+}
+
+#[test]
 fn install_repeat_update_prune_and_uninstall_preserve_settings() {
   let f = Fixture::new();
   let settings = f._temp.path().join("settings");

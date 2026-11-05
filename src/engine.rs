@@ -345,8 +345,22 @@ pub fn install(config_file: &Path, package: Package, options: &Options) -> Resul
     .into_iter()
     .map(|path| lock(path))
     .collect::<Result<_>>()?;
+  // A user may create the destination in advance. Only an entirely empty
+  // ordinary directory is fresh state; even an empty child or hidden file
+  // requires an ownership receipt. Inspect under the root lock and fail closed
+  // on enumeration errors instead of treating an unreadable directory as empty.
+  files::safe_path(&root)?;
+  let has_contents = match fs::read_dir(&root) {
+    Ok(mut entries) => entries
+      .next()
+      .transpose()
+      .with_context(|| format!("Inspect installation directory {}", root.display()))?
+      .is_some(),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+    Err(error) => return Err(error).with_context(|| format!("Inspect installation directory {}", root.display())),
+  };
   let management = root.join("installer");
-  let mut old = if root.exists() {
+  let mut old = if has_contents {
     Some(load_receipt(&root).context(
             "Existing directory has no valid installation.yaml receipt. Choose a fresh install-dir and an unused command location (bin-dir), or remove the previous installation yourself. Existing installations cannot be imported",
         )?)

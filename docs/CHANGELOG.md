@@ -922,3 +922,21 @@
 - Verification: project requirement/reference and Git whitespace checks passed.
   Existing Cargo manifest/lock edits are preserved; no source/build/test changes
   were needed for this documentation-only cleanup.
+
+### 2026-11-05 Accept empty precreated installation directories
+
+- Treat a missing installation root or an existing entirely empty ordinary
+  directory as fresh state. Inspect it under the installation lock, propagate
+  inspection errors, and preserve link/junction checks. Hidden files and empty
+  child directories count as contents and still require a valid ownership receipt;
+  no existing files are adopted or deleted to make room.
+- Add native regression coverage for empty-root install/repeat/update/uninstall,
+  hidden files, empty children, invalid receipts, and a regular-file destination.
+  The empty-root case reproduced the previous missing-receipt error before the fix.
+- Add optional paired integration-target/test-name selection to the existing
+  Cargo-only verify driver and DoTask test wrapper. Focused runs retain format,
+  all-target strict Clippy, final executable inspection, and shim integrity checks;
+  default comprehensive verification remains available unchanged.
+- Verification: Windows focused installation-root verification passed all three
+  tests, formatting, strict all-target Clippy, executable inspection, shim integrity,
+  and Git whitespace. Incomplete selector arguments were rejected before execution.

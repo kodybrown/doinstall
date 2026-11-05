@@ -1,8 +1,10 @@
-description: Build and inspect tools, run all tests, lint and verify shims; daily profile by default.
+description: Build and inspect tools, run tests (optionally focused), lint and verify shims.
 options:
   - {name: profile, choices: [dev, release], default: dev}
+  - {name: test, default: '', description: Integration-test target; requires filter.}
+  - {name: filter, default: '', description: Test-name substring; requires test.}
 requires: [{kind: tool, value: cargo}, {kind: tool, value: git}]
 steps:
   - exec:
       executable: cargo
-      arguments: [run, --quiet, --locked, --profile, bootstrap, --package, doinstall-dev, --, verify, --profile, {parameter: profile}]
+      arguments: [run, --quiet, --locked, --profile, bootstrap, --package, doinstall-dev, --, verify, --profile, {parameter: profile}, --test, {parameter: test}, --filter, {parameter: filter}]
