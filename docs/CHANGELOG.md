@@ -940,3 +940,8 @@
 - Verification: Windows focused installation-root verification passed all three
   tests, formatting, strict all-target Clippy, executable inspection, shim integrity,
   and Git whitespace. Incomplete selector arguments were rejected before execution.
+
+### 2026-11-13 Add shared instruction migration reminder
+
+Added a startup reminder to review the project guide against the current
+shared Codex instructions before changing the project.
