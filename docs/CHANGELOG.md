@@ -953,3 +953,17 @@ shared Codex instructions before changing the project.
   independence, wrapper ownership, installer contracts and shim requirements.
 - Verification: checked the retained project rules and their task/documentation
   references against the current shared instructions and ran Git whitespace checks.
+
+### 2026-11-16 Sync the shared Rust daily workflow
+
+- Sync the managed Rust catalog files and lock hashes from dotask's daily-build
+  update. The shared build, run and test default to Cargo dev and report inspected
+  executables separately by profile. Cached builds retain their timestamps.
+- Verification: all nine managed Rust files matched the local producer catalog,
+  and a repeat sync preview found zero changes. Windows dotask build, run and
+  focused test reported dev without a profile flag, and all three
+  installation-root tests passed. Formatting, Clippy and whitespace checks passed.
+- Confirmed installer-task dispatch and used the same native release command
+  with a fresh external output. Windows release build, installer and portable
+  acceptance passed. All four archive executables matched the release profile's
+  output and all delivery checksums matched.

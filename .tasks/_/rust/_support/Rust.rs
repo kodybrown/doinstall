@@ -5,7 +5,6 @@ use std::{
   collections::{BTreeMap, BTreeSet},
   fs,
   path::PathBuf,
-  time::{SystemTime, UNIX_EPOCH},
 };
 fn string(p: &BuildContext, name: &str, default: &str) -> String {
   p.string(name).unwrap_or(default).to_owned()
@@ -59,49 +58,6 @@ fn parts(version: &str) -> Result<[u64; 3]> {
   }
   Ok([values[0].parse()?, values[1].parse()?, values[2].parse()?])
 }
-fn seconds() -> Result<u64> {
-  Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
-}
-fn calendar(seconds: u64) -> (String, String) {
-  let mut days = seconds / 86400;
-  let mut year = 1970;
-  let leap = |y| y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-  while days >= if leap(year) { 366 } else { 365 } {
-    days -= if leap(year) { 366 } else { 365 };
-    year += 1;
-  }
-  let mut month = 1;
-  for count in [
-    31,
-    if leap(year) { 29 } else { 28 },
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ] {
-    if days < count {
-      break;
-    }
-    days -= count;
-    month += 1;
-  }
-  (
-    format!("{:02}{month:02}.{:02}{:02}", year % 100, days + 1, seconds % 86400 / 3600),
-    format!(
-      "{year:04}-{month:02}-{:02}T{:02}:{:02}:{:02}Z",
-      days + 1,
-      seconds % 86400 / 3600,
-      seconds % 3600 / 60,
-      seconds % 60
-    ),
-  )
-}
 fn target(p: &BuildContext, data: &Value) -> Result<PathBuf> {
   let path = PathBuf::from(data["target_directory"].as_str().context("Missing target_directory")?);
   if std::path::absolute(&path)?.starts_with(std::path::absolute(p.root())?) {
@@ -118,23 +74,6 @@ fn target(p: &BuildContext, data: &Value) -> Result<PathBuf> {
     bail!("Cargo build_directory must be outside source");
   }
   Ok(path)
-}
-fn record(p: &BuildContext, data: &Value, seconds: u64) -> Result<()> {
-  let package = package(p, data)?;
-  let version = package["version"].as_str().context("Missing version")?;
-  parts(version)?;
-  let (stamp, utc) = calendar(seconds);
-  let directory = target(p, data)?.join("rust-build");
-  fs::create_dir_all(&directory)?;
-  let path = directory.join(format!("{}.json", package["name"].as_str().unwrap()));
-  fs::write(
-    &path,
-    serde_json::to_string_pretty(
-      &json!({"version":version,"display_version":format!("{version}+{stamp}"),"built_utc":utc,"unix_seconds":seconds}),
-    )? + "\n",
-  )?;
-  println!("{}+{stamp} (built {utc}); metadata: {}", version, path.display());
-  Ok(())
 }
 /// Replace only the selected table's literal field, retaining BOM, EOLs, comments,
 /// and all unrelated packages. Inherited/nonliteral versions are refused.
@@ -326,11 +265,15 @@ fn privacy(data: &[u8], markers: &[String]) -> Result<()> {
 }
 pub fn operation(p: &BuildContext) -> Result<()> {
   let action = p.string("operation")?;
+  let profile = string(p, "profile", "dev");
+  // Profile names are also keys for the inspected executable inventory.
+  if profile.is_empty() || !profile.bytes().all(|v| v.is_ascii_alphanumeric() || v == b'-' || v == b'_') {
+    bail!("Invalid Cargo profile: {profile}");
+  }
   if action == "run" {
     let data = metadata(p)?;
     let package = package(p, &data)?;
-    let profile = string(p, "profile", "release");
-    let report: Value = serde_json::from_slice(&fs::read(build_report(p, &data)?)?)?;
+    let report: Value = serde_json::from_slice(&fs::read(build_report(p, &data, &profile)?)?)?;
     if report["profile"] != profile || report["version"] != package["version"] {
       bail!("The selected package/profile must be built before running");
     }
@@ -349,6 +292,13 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       .get(&selected)
       .and_then(Value::as_str)
       .context("Executable was not built/scanned")?;
+    let expected = report["sha256"][&selected]
+      .as_str()
+      .context("Missing inspected executable hash")?;
+    use dotask_sdk::sha2::{Digest, Sha256};
+    if format!("{:x}", Sha256::digest(fs::read(binary)?)) != expected {
+      bail!("Executable changed since its successful inspection; build it again");
+    }
     let arguments: Vec<String> =
       serde_json::from_str(&string(p, "args", "[]")).context("--args must be a JSON array of strings")?;
     // Execute Cargo's reported artifact directly: another cargo run could
@@ -379,7 +329,27 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       }
       command.arg("--manifest-path").arg(p.path(string(p, "manifest", "Cargo.toml")));
       if action == "test" {
-        command.arg("--release");
+        command.args(["--profile", &profile]);
+        // Cargo test also builds executable targets. Retain the build's flags
+        // and timestamp so it cannot replace inspected output with a private
+        // path-bearing binary or a different human build identity.
+        let data = metadata(p)?;
+        if let Ok(path) = build_report(p, &data, &profile)
+          && path.is_file()
+        {
+          let report: Value = serde_json::from_slice(&fs::read(path)?)?;
+          command.env_remove("RUSTFLAGS").env(
+            "CARGO_ENCODED_RUSTFLAGS",
+            report["rustflags"].as_str().context("Missing build flags")?,
+          );
+          // Reuse the caller's override, including its absence, so testing does
+          // not change the build-script environment or the inspected identity.
+          if let Some(timestamp) = report["timestamp_override"].as_str() {
+            command.env("RUST_BUILD_TIMESTAMP", timestamp);
+          } else {
+            command.env_remove("RUST_BUILD_TIMESTAMP");
+          }
+        }
       } else {
         command.args(["--all-targets", "--", "-D", "warnings"]);
       }
@@ -388,11 +358,12 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       let data = metadata(p)?;
       target(p, &data)?;
       let package = package(p, &data)?;
-      let seconds = seconds()?;
-      record(p, &data, seconds)?;
+      // Cargo caches build-script output. Reading the clock here and passing
+      // it as an input would invalidate an otherwise unchanged package.
+      let timestamp_override = std::env::var("RUST_BUILD_TIMESTAMP").ok();
       command
         .args(["--locked", "--profile"])
-        .arg(string(p, "profile", "release"))
+        .arg(&profile)
         .args([
           "--package",
           package["name"].as_str().unwrap(),
@@ -435,10 +406,8 @@ pub fn operation(p: &BuildContext) -> Result<()> {
           .map(String::from),
         );
       }
-      command
-        .env_remove("RUSTFLAGS")
-        .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
-        .env("RUST_BUILD_TIMESTAMP", seconds.to_string());
+      let encoded_flags = flags.join("\x1f");
+      command.env_remove("RUSTFLAGS").env("CARGO_ENCODED_RUSTFLAGS", &encoded_flags);
       let output = p.capture(&mut command)?;
       let mut binaries = BTreeMap::new();
       for line in output.lines() {
@@ -462,16 +431,23 @@ pub fn operation(p: &BuildContext) -> Result<()> {
       if binaries.is_empty() {
         bail!("Build produced no executable to scan");
       }
-      for binary in binaries.values().map(PathBuf::from) {
-        privacy(&fs::read(&binary)?, &markers)?;
+      let mut hashes = BTreeMap::new();
+      for (name, binary) in &binaries {
+        let bytes = fs::read(binary)?;
+        privacy(&bytes, &markers)?;
+        use dotask_sdk::sha2::{Digest, Sha256};
+        hashes.insert(name, format!("{:x}", Sha256::digest(&bytes)));
+        let binary = PathBuf::from(binary);
         println!("Private-content check passed: {}", binary.display());
       }
       // Write only after every reported executable passed inspection. Run/test
       // orchestration stops on build failure and cannot consume an old success.
       fs::write(
-        build_report(p, &data)?,
+        build_report(p, &data, &profile)?,
         serde_json::to_vec_pretty(&json!({
-          "version": package["version"], "profile": string(p, "profile", "release"), "binaries": binaries
+          "version": package["version"], "profile": profile, "binaries": binaries,
+          "sha256": hashes, "rustflags": encoded_flags, "timestamp_override": timestamp_override,
+          "privacy_markers": markers
         }))?,
       )?;
       return Ok(());
@@ -479,6 +455,29 @@ pub fn operation(p: &BuildContext) -> Result<()> {
     _ => bail!("Unsupported Cargo operation"),
   }
   p.execute(&mut command)?;
+  if action == "test" {
+    let data = metadata(p)?;
+    if let Ok(path) = build_report(p, &data, &profile)
+      && path.is_file()
+    {
+      let mut report: Value = serde_json::from_slice(&fs::read(&path)?)?;
+      let markers: Vec<String> = serde_json::from_value(report["privacy_markers"].clone())?;
+      let mut hashes = serde_json::Map::new();
+      // Test dev-dependencies can unify extra Cargo features and replace the
+      // normal executable even with identical flags/time. Inspect those final
+      // tested bytes before allowing staging/run, and update only on success.
+      for (name, binary) in report["binaries"].as_object().context("Missing executable inventory")? {
+        let binary = binary.as_str().context("Invalid executable path")?;
+        let bytes = fs::read(binary)?;
+        privacy(&bytes, &markers)?;
+        use dotask_sdk::sha2::{Digest, Sha256};
+        hashes.insert(name.clone(), format!("{:x}", Sha256::digest(&bytes)).into());
+        println!("Private-content check passed after tests: {binary}");
+      }
+      report["sha256"] = hashes.into();
+      fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+    }
+  }
   if action == "fmt" && flag(p, "format-tasks") {
     let mut fmt = p.command("rustfmt");
     fmt.args(["--edition", "2024"]);
@@ -495,8 +494,8 @@ pub fn operation(p: &BuildContext) -> Result<()> {
   }
   Ok(())
 }
-fn build_report(p: &BuildContext, data: &Value) -> Result<PathBuf> {
-  let directory = target(p, data)?.join("rust-build");
+fn build_report(p: &BuildContext, data: &Value, profile: &str) -> Result<PathBuf> {
+  let directory = target(p, data)?.join("rust-build").join(format!("profile-{profile}"));
   fs::create_dir_all(&directory)?;
   Ok(directory.join(format!("{}-executables.json", package(p, data)?["name"].as_str().unwrap())))
 }
@@ -544,10 +543,5 @@ mod tests {
     }
     assert!(privacy(b"/custom/private/build.rs", &["/custom/private".into()]).is_err());
     privacy(b"/source/src/main.rs /cargo/registry /rust-toolchain", &[]).unwrap();
-  }
-  #[test]
-  fn calendar_uses_utc_and_preserves_leap_days() {
-    assert_eq!(calendar(1709164800), ("2402.2900".into(), "2024-02-29T00:00:00Z".into()));
-    assert_eq!(calendar(1704067200), ("2401.0100".into(), "2024-01-01T00:00:00Z".into()));
   }
 }

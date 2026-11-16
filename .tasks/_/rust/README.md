@@ -34,7 +34,7 @@ development and CI remain available.
 | --- | --- |
 | `build` | Format, Clippy, locked Cargo build, remap private paths, scan executables |
 | `run` | Build once and execute the exact scanned binary with literal arguments |
-| `test` | Build once and run locked release-profile tests |
+| `test` | Build once, run locked tests in the selected Cargo profile, then optional project `verify` |
 | `format` | Cargo formatting; `--check` refuses changes |
 | `clippy` | All-target Clippy; warnings fail |
 | `update-version` | Explicit version increment, patch by default; no build or Git operations |
@@ -42,8 +42,11 @@ development and CI remain available.
 ## Development
 
 Build/run/test preserve the package version and do not invoke update-version.
-They accept `--manifest` and `--package`. Build/run accept `--profile` (default
-release); test uses release. A virtual workspace requires an explicit package
+They accept `--manifest` and `--package`. Build, run and test default to Cargo's
+developer profile (`dev`). Pass `--profile release` for optimized builds or
+choose a Cargo profile defined by your project. Packaging and release gates
+should pass `profile: release` explicitly in their task steps. A virtual
+workspace requires an explicit package
 for building or versioning. Generic tests default to all workspace packages.
 
 Formatting may modify Cargo source. Shared task sources are excluded by default
@@ -59,12 +62,23 @@ Quotes, spaces, empty arguments and Unicode retain their argument boundaries.
 The application exit code propagates to the caller. The exact inspected
 executable is launched directly, avoiding an extra Cargo run with different flags.
 
-Build supplies `RUST_BUILD_TIMESTAMP` (Unix seconds) and records human UTC
-metadata beneath Cargo's external target directory. Project build scripts must
-consume that contract to embed the date in their tools. The date does not change
-SemVer ordering or edit the package version. Successful executable paths are
-recorded from Cargo's compiler-artifact messages only after every scan passes.
+Project build scripts own any embedded timestamps. For a UTC build date, read
+an optional `RUST_BUILD_TIMESTAMP` override (Unix seconds) and read the clock
+only when Cargo runs the build script. Declare the source, manifest and other
+inputs that refresh the identity. Cached builds retain their embedded dates.
+The executable inspection report replaces the old wrapper-clock metadata
+file. It records the caller's timestamp override, if supplied, and the paths
+and hashes from a successful build. Each Cargo profile has its own report.
 Keep evaluated Cargo target/build directories outside source.
+
+Test calls a project task named `verify` after Rust tests when it exists. Only
+absence is skipped; ambiguity, invalid metadata and a failing hook stop the task.
+Keep `verify` for extra product checks and never call `test` from it: that is a
+cycle. Do not declare the optional hook as a required shared dependency. Use
+`--verify false` when a project wrapper calls its required hook explicitly to
+forward project-specific parameters. Tests retain the build's compiler flags
+and optional timestamp override, then inspect final executables after successful tests (dev-dependencies
+can change Cargo feature unification). Run checks the recorded hash before execution.
 
 ## Explicit version preparation
 
@@ -79,7 +93,7 @@ Only the selected package's literal manifest version and local Cargo.lock entry
 are changed. Surrounding formatting, BOM, EOLs, comments and dependency versions
 are retained. Mutually exclusive selectors and inherited/workspace versions are
 refused. The task validates Cargo metadata but never builds, tests, commits,
-promotes, tags, pushes, publishes, or updates generated build-date records.
+promotes, tags, pushes, or publishes.
 
 Review and commit the resulting version files along with intended code and
 changelog changes, then fast-forward main and push through the project's normal

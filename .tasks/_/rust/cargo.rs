@@ -4,7 +4,7 @@
 //   - {name: operation, required: true, choices: [build, run, test, fmt, clippy]}
 //   - {name: manifest, type: path, default: Cargo.toml}
 //   - {name: package, default: ''}
-//   - {name: profile, default: release}
+//   - {name: profile, default: dev}
 //   - {name: bin, default: ''}
 //   - {name: args, default: '[]', description: JSON array of literal application arguments.}
 //   - {name: check, type: bool, default: false}

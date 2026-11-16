@@ -4,21 +4,21 @@ directory: .tasks
 tasks:
   _/rust/build:
     source: _
-    revision: 49fc553c4df5216d03be481bb803cb4dfa369eccddb2159fe546cefc2cb062b5
+    revision: 3594b2b6291c290c8d1b02167b20be08247e6057f49e18c5800f35aa619faa1f
     requires:
     - _/rust/format
     - _/rust/clippy
     - _/rust/cargo
     files:
-      _/rust/build.task: 1a3a486238fd5342ccb0e3ebf0d8fec5b1db30922fd0c0fe7142a06fa1875cda
+      _/rust/build.task: 50a9366a82b2c3495efe4c5155d7b5ba837b7134426223e203791f1f056d72bd
   _/rust/cargo:
     source: _
-    revision: bdf4dd734c556ba9fed874864ae49113b7d3bda6041a0bccaa67bd1d402ee7b1
+    revision: fb32b9b16dc1ea6ce3db6ab30f5977e862d118bb5a2b3b5b696260cc7b90f71a
     requires: []
     files:
-      _/rust/README.md: 2ded36b3f7b56ec379999216b5f3a2b1016dafa7a41066264ac2d58aa2dbfa57
-      _/rust/_support/Rust.rs: 4ea0aa0f0929ae43c523fdfa5e081826e377d7fa5e42f800f0dd419b592bfd7d
-      _/rust/cargo.rs: 195563f00ddac4438c44129fa2a51a57c858d01fd412ca92001946c447c57551
+      _/rust/README.md: 69033075fa3b3bc423c0371ebf8f8dd4be7b60865a7d56ebf428c35786a7d4d6
+      _/rust/_support/Rust.rs: 6e0e23c0aded53fdfa2707af547c984aba7761de5471fe13e40cbd5e87a687db
+      _/rust/cargo.rs: bc605c0bf05939e9c3cc08a2078703909c95b62fb300904899d747a9aa9dc9fa
   _/rust/clippy:
     source: _
     revision: 4c4fc26dadfe24a14cd053bfc75b1e3d1e58f4bca3bbe2e36359a133652c503c
@@ -35,25 +35,25 @@ tasks:
       _/rust/format.task: 95236806b675d4939f5b2fd0c76b5e0da0aa70c13ce58ae80f84e483e8282bee
   _/rust/run:
     source: _
-    revision: 5ee49733ae254f6aff97a516442046d5a5a03d4dd316d8734936cc91ffd1f01f
+    revision: 3353193b3a88e29d4c7d676d58830e8bc6f20488fb68766e683771a1aec6821d
     requires:
     - _/rust/build
     - _/rust/cargo
     files:
-      _/rust/run.task: ccf46648731d7ed954b349c15c70ecceb84e54375adae97cf6399eca99743024
+      _/rust/run.task: 4a0f75135d9618e91739c9b22ddfd26def1c26a6c308c0b1d9f5c0d0631eeb10
   _/rust/test:
     source: _
-    revision: 7cc32e1ea787a120f35fe17d3e5a3d40c23cc60b83d630f2b2981766614eeee4
+    revision: 9c554f3f56d9ad64a95ebc91ec916af1bc97a1fbcecdc13f9c056f863eaee5d4
     requires:
     - _/rust/build
     - _/rust/cargo
     files:
-      _/rust/test.task: c429e6553b3ae980c513724b30cee2adde36f7eda51ea160f9a00ab8676e91a3
+      _/rust/test.task: 7d2ebfef26c74e69b1f445fbe83822a6144ed62e228735094a5b57f39df6272d
   _/rust/update-version:
     source: _
-    revision: cf9afe815df1fd46c629599b75f4eeb5db58432122a745701ea9d966e6af5011
+    revision: e68c3f69533155f6cebdca4727ee68ce8812ba643f7bd885394c59212ae01f42
     requires: []
     files:
-      _/rust/README.md: 2ded36b3f7b56ec379999216b5f3a2b1016dafa7a41066264ac2d58aa2dbfa57
-      _/rust/_support/Rust.rs: 4ea0aa0f0929ae43c523fdfa5e081826e377d7fa5e42f800f0dd419b592bfd7d
+      _/rust/README.md: 69033075fa3b3bc423c0371ebf8f8dd4be7b60865a7d56ebf428c35786a7d4d6
+      _/rust/_support/Rust.rs: 6e0e23c0aded53fdfa2707af547c984aba7761de5471fe13e40cbd5e87a687db
       _/rust/update-version.rs: d95cf586feed9afd8ab446a3956fcb161d8ffc53ea5c7c7f7aede8c5cd2217a7

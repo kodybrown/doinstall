@@ -2,7 +2,7 @@ description: Format, lint, build with private-path remapping, and scan executabl
 options:
   - {name: manifest, type: path, default: Cargo.toml}
   - {name: package, default: ''}
-  - {name: profile, default: release}
+  - {name: profile, default: dev}
   - {name: format-tasks, type: bool, default: false}
 requires:
   - {kind: task, value: rust/format}
