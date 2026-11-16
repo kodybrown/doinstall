@@ -945,3 +945,11 @@
 
 Added a startup reminder to review the project guide against the current
 shared Codex instructions before changing the project.
+
+### 2026-11-16 Complete the shared instruction migration
+
+- Remove the startup migration reminder and duplicate shared task-authoring and
+  managed-copy rules. Keep the project verification commands, Cargo-only
+  independence, wrapper ownership, installer contracts and shim requirements.
+- Verification: checked the retained project rules and their task/documentation
+  references against the current shared instructions and ran Git whitespace checks.
